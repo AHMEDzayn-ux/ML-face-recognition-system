@@ -1,0 +1,292 @@
+import axios from "axios";
+import { Camera } from "expo-camera";
+import { useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+
+// CHANGE THIS to your PC's IP address
+const API_URL = "http://10.188.23.214:8000/mark_attendance";
+
+export default function App() {
+  const [hasPermission, setHasPermission] = useState(null);
+  const [camera, setCamera] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [result, setResult] = useState(null);
+  const [showCamera, setShowCamera] = useState(false);
+
+  // Request camera permission
+  const requestPermission = async () => {
+    const { status } = await Camera.requestCameraPermissionsAsync();
+    setHasPermission(status === "granted");
+    if (status === "granted") {
+      setShowCamera(true);
+    } else {
+      Alert.alert(
+        "Permission Denied",
+        "Camera access is required to mark attendance",
+      );
+    }
+  };
+
+  // Capture and send photo
+  const capturePhoto = async () => {
+    if (!camera) return;
+
+    setIsLoading(true);
+    setResult(null);
+
+    try {
+      const photo = await camera.takePictureAsync({
+        quality: 0.7,
+        base64: false,
+      });
+
+      // Send to backend
+      await sendToBackend(photo.uri);
+    } catch (error) {
+      Alert.alert("Error", "Failed to capture photo");
+      setIsLoading(false);
+    }
+  };
+
+  // Send photo to backend API
+  const sendToBackend = async (imageUri) => {
+    try {
+      const formData = new FormData();
+      formData.append("file", {
+        uri: imageUri,
+        type: "image/jpeg",
+        name: "photo.jpg",
+      });
+
+      const response = await axios.post(API_URL, formData, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+        timeout: 10000, // 10 second timeout
+      });
+
+      setIsLoading(false);
+
+      if (response.data.success) {
+        setResult({
+          success: true,
+          student: response.data.student,
+          confidence: response.data.confidence,
+          timestamp: response.data.timestamp,
+        });
+        Alert.alert(
+          "✅ Attendance Marked!",
+          `Welcome, ${response.data.student}!\nConfidence: ${response.data.confidence.toFixed(1)}%`,
+          [{ text: "OK" }],
+        );
+      } else {
+        setResult({
+          success: false,
+          error: response.data.error,
+          message: response.data.message,
+        });
+        Alert.alert("❌ Failed", response.data.message || "Unknown error", [
+          { text: "OK" },
+        ]);
+      }
+    } catch (error) {
+      setIsLoading(false);
+      console.error("Error:", error);
+      Alert.alert(
+        "Connection Error",
+        "Cannot connect to server. Make sure:\n- Backend is running\n- Phone and PC are on same WiFi\n- API_URL is correct",
+        [{ text: "OK" }],
+      );
+    }
+  };
+
+  // Main UI
+  if (!showCamera) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.title}>📸 Face Recognition Attendance</Text>
+        <TouchableOpacity style={styles.button} onPress={requestPermission}>
+          <Text style={styles.buttonText}>Open Camera</Text>
+        </TouchableOpacity>
+        <Text style={styles.info}>
+          Make sure backend server is running!{"\n"}
+          API: {API_URL}
+        </Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.container}>
+      <Camera
+        style={styles.camera}
+        type={Camera.Constants.Type.front}
+        ref={(ref) => setCamera(ref)}
+      >
+        <View style={styles.cameraOverlay}>
+          <View style={styles.header}>
+            <Text style={styles.headerText}>
+              Position your face in the frame
+            </Text>
+          </View>
+
+          <View style={styles.faceFrame} />
+
+          {result && (
+            <View
+              style={[
+                styles.resultBox,
+                result.success ? styles.successBox : styles.errorBox,
+              ]}
+            >
+              <Text style={styles.resultText}>
+                {result.success
+                  ? `✅ ${result.student}`
+                  : `❌ ${result.message}`}
+              </Text>
+            </View>
+          )}
+        </View>
+      </Camera>
+
+      <View style={styles.controls}>
+        <TouchableOpacity
+          style={[styles.captureButton, isLoading && styles.disabledButton]}
+          onPress={capturePhoto}
+          disabled={isLoading}
+        >
+          {isLoading ? (
+            <ActivityIndicator size="large" color="#fff" />
+          ) : (
+            <Text style={styles.captureButtonText}>
+              📸 Capture & Mark Attendance
+            </Text>
+          )}
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => setShowCamera(false)}
+        >
+          <Text style={styles.backButtonText}>← Back</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: "#1a1a2e",
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: "bold",
+    color: "#fff",
+    textAlign: "center",
+    marginTop: 100,
+    marginBottom: 40,
+  },
+  button: {
+    backgroundColor: "#0f3460",
+    padding: 20,
+    borderRadius: 10,
+    marginHorizontal: 40,
+  },
+  buttonText: {
+    color: "#fff",
+    fontSize: 18,
+    textAlign: "center",
+    fontWeight: "bold",
+  },
+  info: {
+    color: "#aaa",
+    fontSize: 12,
+    textAlign: "center",
+    marginTop: 20,
+    paddingHorizontal: 20,
+  },
+  camera: {
+    flex: 1,
+  },
+  cameraOverlay: {
+    flex: 1,
+    backgroundColor: "transparent",
+    justifyContent: "space-between",
+  },
+  header: {
+    backgroundColor: "rgba(0,0,0,0.7)",
+    padding: 20,
+    paddingTop: 50,
+  },
+  headerText: {
+    color: "#fff",
+    fontSize: 16,
+    textAlign: "center",
+  },
+  faceFrame: {
+    width: 250,
+    height: 250,
+    borderWidth: 3,
+    borderColor: "#4ecca3",
+    borderRadius: 125,
+    alignSelf: "center",
+    marginTop: 50,
+  },
+  resultBox: {
+    padding: 20,
+    marginHorizontal: 20,
+    borderRadius: 10,
+    marginBottom: 20,
+  },
+  successBox: {
+    backgroundColor: "rgba(78, 204, 163, 0.9)",
+  },
+  errorBox: {
+    backgroundColor: "rgba(231, 76, 60, 0.9)",
+  },
+  resultText: {
+    color: "#fff",
+    fontSize: 18,
+    fontWeight: "bold",
+    textAlign: "center",
+  },
+  controls: {
+    backgroundColor: "#1a1a2e",
+    padding: 20,
+    paddingBottom: 40,
+  },
+  captureButton: {
+    backgroundColor: "#4ecca3",
+    padding: 20,
+    borderRadius: 10,
+    marginBottom: 10,
+  },
+  disabledButton: {
+    backgroundColor: "#666",
+  },
+  captureButtonText: {
+    color: "#fff",
+    fontSize: 18,
+    textAlign: "center",
+    fontWeight: "bold",
+  },
+  backButton: {
+    backgroundColor: "#666",
+    padding: 15,
+    borderRadius: 10,
+  },
+  backButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    textAlign: "center",
+  },
+});

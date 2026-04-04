@@ -1,0 +1,24 @@
+# Git ignore patterns
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pkl
+*.pth
+.env
+.vscode/
+.idea/
+
+# Face data (don't commit personal photos)
+known_faces/
+test_images/
+*.jpg
+*.jpeg
+*.png
+
+# DeepFace model cache
+.deepface/
+
+# Logs
+*.log
+logs/
