@@ -810,6 +810,127 @@ async def delete_student(student_id: str):
         raise HTTPException(status_code=500, detail=f"Error deleting student: {str(e)}")
 
 
+@app.put("/api/students/{student_id}")
+async def update_student(
+    student_id: str,
+    roll_number: Optional[str] = Form(None),
+    name: Optional[str] = Form(None),
+    class_name: Optional[str] = Form(None),
+    section: Optional[str] = Form(None),
+    email: Optional[str] = Form(None),
+    phone: Optional[str] = Form(None),
+):
+    """
+    Update student information in Supabase
+    
+    Args:
+        student_id: UUID of the student to update
+        roll_number: Student roll number (optional)
+        name: Student name (optional)
+        class_name: Class name (optional)
+        section: Section/section (optional)
+        email: Email address (optional)
+        phone: Phone number (optional)
+    
+    Returns:
+        Updated student data
+    """
+    
+    if not supabase_client:
+        raise HTTPException(
+            status_code=503,
+            detail="Supabase not configured. Cannot update student."
+        )
+    
+    try:
+        # Get current student data
+        student_response = supabase_client.table('students')\
+            .select('*')\
+            .eq('id', student_id)\
+            .execute()
+        
+        if not student_response.data or len(student_response.data) == 0:
+            raise HTTPException(status_code=404, detail="Student not found")
+        
+        current_student = student_response.data[0]
+        
+        # Build update data with only provided fields
+        update_data = {}
+        if roll_number is not None:
+            # Check if new roll number already exists (and it's not the same student)
+            existing = supabase_client.table('students')\
+                .select('id')\
+                .eq('roll_number', roll_number)\
+                .neq('id', student_id)\
+                .execute()
+            
+            if existing.data and len(existing.data) > 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Student with roll number '{roll_number}' already exists"
+                )
+            update_data['roll_number'] = roll_number
+        
+        if name is not None:
+            update_data['name'] = name
+        if class_name is not None:
+            update_data['class'] = class_name
+        if section is not None:
+            update_data['section'] = section
+        if email is not None:
+            update_data['email'] = email
+        if phone is not None:
+            update_data['phone'] = phone
+        
+        if not update_data:
+            raise HTTPException(
+                status_code=400,
+                detail="No fields to update"
+            )
+        
+        # Update student in Supabase
+        result = supabase_client.table('students')\
+            .update(update_data)\
+            .eq('id', student_id)\
+            .execute()
+        
+        if result.data and len(result.data) > 0:
+            updated_student = result.data[0]
+            old_name = current_student['name']
+            new_name = updated_student['name']
+            
+            # If name changed, update the known_faces folder
+            if old_name != new_name:
+                old_folder = os.path.join(KNOWN_FACES_DIR, old_name)
+                new_folder = os.path.join(KNOWN_FACES_DIR, new_name)
+                
+                if os.path.exists(old_folder):
+                    try:
+                        os.rename(old_folder, new_folder)
+                        print(f"✅ Renamed face photos folder: {old_name} → {new_name}")
+                    except Exception as e:
+                        print(f"⚠️  Warning: Could not rename folder: {e}")
+                
+                # Trigger embeddings rebuild due to name change
+                asyncio.create_task(rebuild_embeddings_background())
+            
+            print(f"✅ Updated student: {new_name} (ID: {student_id})")
+            
+            return JSONResponse(content={
+                "success": True,
+                "student": updated_student,
+                "message": f"Student '{new_name}' updated successfully"
+            })
+        else:
+            raise HTTPException(status_code=500, detail="Failed to update student")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error updating student: {e}")
+        raise HTTPException(status_code=500, detail=f"Error updating student: {str(e)}")
+
+
 @app.post("/api/students/{student_id}/upload_photos")
 async def upload_student_photos(
     student_id: str,
@@ -823,6 +944,8 @@ async def upload_student_photos(
     1. Local known_faces/{student_name}/ directory (for embeddings)
     2. Supabase Storage bucket (for display in UI)
     3. Stores cloud URL in students.photo_url field
+    
+    When uploading new photos, old photos are automatically replaced.
     
     Args:
         student_id: UUID of the student
@@ -866,7 +989,194 @@ async def upload_student_photos(
         
         # Create student's folder in known_faces (for embeddings)
         student_folder = os.path.join(KNOWN_FACES_DIR, student_name)
+        
+        # CLEAR OLD PHOTOS - Remove existing folder to replace old photos
+        if os.path.exists(student_folder):
+            try:
+                shutil.rmtree(student_folder)
+                print(f"🗑️  Cleared old photos for {student_name}")
+            except Exception as e:
+                print(f"⚠️  Warning: Could not clear old photos folder: {e}")
+        
+        # Create fresh folder for new photos
         os.makedirs(student_folder, exist_ok=True)
+        
+        # DELETE OLD PHOTOS from Supabase Storage
+        try:
+            # List all files in student's storage path
+            storage_files = supabase_client.storage.from_("student-photos").list(f"{student_id}/{student_name}/")
+            
+            if storage_files:
+                # Delete all files in this path
+                for file in storage_files:
+                    try:
+                        file_path = f"{student_id}/{student_name}/{file['name']}"
+                        supabase_client.storage.from_("student-photos").remove([file_path])
+                        print(f"🗑️  Deleted old photo from storage: {file_path}")
+                    except Exception as e:
+                        print(f"⚠️  Warning: Could not delete {file['name']}: {e}")
+        except Exception as e:
+            print(f"⚠️  Warning: Could not list old photos in storage: {e}")
+        
+        # Save and validate each photo
+        saved_count = 0
+        failed_photos = []
+        photo_urls = []
+        first_photo_url = None
+        
+        for idx, photo in enumerate(photos):
+            # Validate file type
+            if not photo.content_type.startswith('image/'):
+                failed_photos.append({
+                    "filename": photo.filename,
+                    "reason": "Not an image file"
+                })
+                continue
+            
+            try:
+                # Save photo temporarily for validation
+                temp_path = os.path.join(UPLOAD_DIR, f"temp_validate_{idx}.jpg")
+                
+                with open(temp_path, "wb") as buffer:
+                    content = await photo.read()
+                    buffer.write(content)
+                
+                # Validate face detection
+                try:
+                    # Use safe DeepFace processing with memory management
+                    print(f"   🔍 Processing photo {idx + 1} ({photo.filename})...")
+                    safe_deepface_represent(temp_path, enforce_detection=True)
+                    
+                    # Face detected successfully
+                    photo_number = saved_count + 1
+                    
+                    # 1. Save locally for embeddings
+                    local_path = os.path.join(student_folder, f"photo_{photo_number}.jpg")
+                    shutil.copy(temp_path, local_path)
+                    
+                    # 2. Upload to Supabase Storage
+                    try:
+                        storage_path = f"{student_id}/{student_name}/photo_{photo_number}.jpg"
+                        
+                        with open(temp_path, "rb") as f:
+                            file_content = f.read()
+                            
+                        print(f"📤 Uploading to Supabase: {storage_path}")
+                        print(f"   File size: {len(file_content)} bytes")
+                        print(f"   Bucket: student-photos")
+                        
+                        try:
+                            # Try to upload
+                            upload_response = supabase_client.storage.from_("student-photos").upload(
+                                storage_path,
+                                file_content,
+                                {"content-type": "image/jpeg"}
+                            )
+                            print(f"   Upload response: {upload_response}")
+                        except Exception as upload_err:
+                            # If it fails, might be because path exists, try to replace
+                            print(f"   First upload failed: {upload_err}")
+                            print(f"   Attempting to replace file...")
+                            try:
+                                upload_response = supabase_client.storage.from_("student-photos").update(
+                                    storage_path,
+                                    file_content,
+                                    {"content-type": "image/jpeg"}
+                                )
+                                print(f"   Replace successful")
+                            except Exception as replace_err:
+                                print(f"   Replace also failed: {replace_err}")
+                                raise upload_err  # Raise original error
+                        
+                        # Get public URL
+                        public_url = supabase_client.storage.from_("student-photos").get_public_url(storage_path)
+                        print(f"   ✅ Public URL: {public_url}")
+                        photo_urls.append(public_url)
+                        
+                        # Store first photo URL for student profile
+                        if first_photo_url is None:
+                            first_photo_url = public_url
+                        
+                        print(f"✅ Saved photo {photo_number} for {student_name} (local + cloud)")
+                        
+                    except Exception as storage_error:
+                        print(f"❌ CRITICAL: Cloud upload FAILED for photo {photo_number}: {storage_error}")
+                        print(f"   Error type: {type(storage_error).__name__}")
+                        print(f"   Photo saved locally only (not accessible from app)")
+                        import traceback
+                        traceback.print_exc()
+                        # DO NOT continue - this photo failed and won't be uploaded
+                    
+                    saved_count += 1
+                    
+                except ValueError:
+                    failed_photos.append({
+                        "filename": photo.filename,
+                        "reason": "No face detected in image"
+                    })
+                except Exception as e:
+                    failed_photos.append({
+                        "filename": photo.filename,
+                        "reason": f"Face detection error: {str(e)}"
+                    })
+                
+                # Clean up temp file
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+                    
+            except Exception as e:
+                failed_photos.append({
+                    "filename": photo.filename,
+                    "reason": f"Upload error: {str(e)}"
+                })
+        
+        # Check if we have at least 1 valid photo
+        if saved_count < 1:
+            # Clean up - remove folder if not enough photos
+            if os.path.exists(student_folder):
+                shutil.rmtree(student_folder)
+            
+            raise HTTPException(
+                status_code=400,
+                detail=f"No valid photos with detectable faces. Failed photos: {failed_photos}"
+            )
+        
+        # Update student record with first photo URL (ONLY if we have a valid cloud URL)
+        db_update_success = False
+        if first_photo_url:
+            try:
+                supabase_client.table('students').update({
+                    "photo_url": first_photo_url
+                }).eq('id', student_id).execute()
+                print(f"✅ Updated student photo_url in database: {first_photo_url}")
+                db_update_success = True
+            except Exception as e:
+                print(f"❌ CRITICAL: Failed to update photo_url in database: {e}")
+                print(f"   Photo is saved locally but NOT accessible from cloud!")
+        else:
+            print(f"⚠️ WARNING: No photo_url to save (Supabase upload failed or skipped)")
+        
+        print(f"✅ Successfully uploaded {saved_count} photos for {student_name}")
+        
+        # Trigger embeddings rebuild in background
+        asyncio.create_task(rebuild_embeddings_background())
+        
+        response_data = {
+            "success": True,
+            "student_name": student_name,
+            "photos_saved": saved_count,
+            "photo_urls": photo_urls,
+            "message": f"Successfully uploaded {saved_count} photos for {student_name}"
+        }
+        
+        if failed_photos:
+            response_data["failed_photos"] = failed_photos
+            response_data["message"] += f" ({len(failed_photos)} photos failed validation)"
+        
+        return JSONResponse(content=response_data)
+        
+    except HTTPException:
+        raise
         
         # Save and validate each photo
         saved_count = 0

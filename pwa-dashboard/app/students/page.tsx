@@ -11,9 +11,11 @@ import {
   Search,
   Plus,
   Trash2,
+  Pencil,
 } from "lucide-react";
 import AddStudentForm from "@/components/AddStudentForm";
 import DeleteStudentDialog from "@/components/DeleteStudentDialog";
+import EditStudentDialog from "@/components/EditStudentDialog";
 import { deleteStudent } from "@/lib/api";
 
 export default function StudentsPage() {
@@ -22,6 +24,7 @@ export default function StudentsPage() {
   const [search, setSearch] = useState("");
   const [showAddForm, setShowAddForm] = useState(false);
   const [studentToDelete, setStudentToDelete] = useState<Student | null>(null);
+  const [studentToEdit, setStudentToEdit] = useState<Student | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [notification, setNotification] = useState<{
     type: "success" | "error";
@@ -50,6 +53,16 @@ export default function StudentsPage() {
 
   const handleAddSuccess = () => {
     showNotification("success", "Student added successfully!");
+    fetchStudents();
+  };
+
+  const handleEditClick = (student: Student) => {
+    setStudentToEdit(student);
+  };
+
+  const handleEditSuccess = () => {
+    showNotification("success", "Student updated successfully!");
+    setStudentToEdit(null);
     fetchStudents();
   };
 
@@ -166,14 +179,23 @@ export default function StudentsPage() {
             key={student.id}
             className="surface-card card-hover overflow-hidden relative group"
           >
-            {/* Delete Button */}
-            <button
-              onClick={() => handleDeleteClick(student)}
-              className="absolute top-2 sm:top-3 right-2 sm:right-3 p-1 sm:p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all opacity-0 group-hover:opacity-100 z-10"
-              title="Delete student"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
+            {/* Action Buttons */}
+            <div className="absolute top-2 sm:top-3 right-2 sm:right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-all z-10">
+              <button
+                onClick={() => handleEditClick(student)}
+                className="p-1 sm:p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-all"
+                title="Edit student"
+              >
+                <Pencil className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => handleDeleteClick(student)}
+                className="p-1 sm:p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all"
+                title="Delete student"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
 
             {/* Photo Section */}
             <div className="w-full h-32 sm:h-40 bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-700 dark:to-slate-800 flex items-center justify-center overflow-hidden relative">
@@ -253,6 +275,16 @@ export default function StudentsPage() {
         onClose={() => setShowAddForm(false)}
         onSuccess={handleAddSuccess}
       />
+
+      {/* Edit Student Dialog */}
+      {studentToEdit && (
+        <EditStudentDialog
+          student={studentToEdit}
+          isOpen={true}
+          onClose={() => setStudentToEdit(null)}
+          onSuccess={handleEditSuccess}
+        />
+      )}
 
       {/* Delete Confirmation Dialog */}
       {studentToDelete && (

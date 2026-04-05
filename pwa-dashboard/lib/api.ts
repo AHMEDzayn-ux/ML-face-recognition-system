@@ -125,6 +125,44 @@ export async function deleteStudent(studentId: string): Promise<{
   return response.json();
 }
 
+export interface UpdateStudentData {
+  roll_number?: string;
+  name?: string;
+  class_name?: string;
+  section?: string;
+  email?: string;
+  phone?: string;
+}
+
+export async function updateStudent(
+  studentId: string,
+  studentData: UpdateStudentData
+): Promise<{
+  success: boolean;
+  student?: any;
+  message?: string;
+}> {
+  const formData = new FormData();
+  if (studentData.roll_number) formData.append('roll_number', studentData.roll_number);
+  if (studentData.name) formData.append('name', studentData.name);
+  if (studentData.class_name) formData.append('class_name', studentData.class_name);
+  if (studentData.section) formData.append('section', studentData.section);
+  if (studentData.email) formData.append('email', studentData.email);
+  if (studentData.phone) formData.append('phone', studentData.phone);
+
+  const response = await fetch(`${API_URL}/api/students/${studentId}`, {
+    method: 'PUT',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to update student');
+  }
+
+  return response.json();
+}
+
 export async function rebuildEmbeddings(): Promise<{
   success: boolean;
   message?: string;
