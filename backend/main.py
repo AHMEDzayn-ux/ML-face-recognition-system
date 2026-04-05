@@ -911,8 +911,8 @@ async def update_student(
                     except Exception as e:
                         print(f"⚠️  Warning: Could not rename folder: {e}")
                 
-                # Trigger embeddings rebuild due to name change
-                asyncio.create_task(rebuild_embeddings_background())
+                # Trigger INCREMENTAL embeddings update with new name
+                asyncio.create_task(add_student_embedding_background(student_id, new_name, updated_student.get('photo_url')))
             
             print(f"✅ Updated student: {new_name} (ID: {student_id})")
             
@@ -1158,168 +1158,8 @@ async def upload_student_photos(
         
         print(f"✅ Successfully uploaded {saved_count} photos for {student_name}")
         
-        # Trigger embeddings rebuild in background
-        asyncio.create_task(rebuild_embeddings_background())
-        
-        response_data = {
-            "success": True,
-            "student_name": student_name,
-            "photos_saved": saved_count,
-            "photo_urls": photo_urls,
-            "message": f"Successfully uploaded {saved_count} photos for {student_name}"
-        }
-        
-        if failed_photos:
-            response_data["failed_photos"] = failed_photos
-            response_data["message"] += f" ({len(failed_photos)} photos failed validation)"
-        
-        return JSONResponse(content=response_data)
-        
-    except HTTPException:
-        raise
-        
-        # Save and validate each photo
-        saved_count = 0
-        failed_photos = []
-        photo_urls = []
-        first_photo_url = None
-        
-        for idx, photo in enumerate(photos):
-            # Validate file type
-            if not photo.content_type.startswith('image/'):
-                failed_photos.append({
-                    "filename": photo.filename,
-                    "reason": "Not an image file"
-                })
-                continue
-            
-            try:
-                # Save photo temporarily for validation
-                temp_path = os.path.join(UPLOAD_DIR, f"temp_validate_{idx}.jpg")
-                
-                with open(temp_path, "wb") as buffer:
-                    content = await photo.read()
-                    buffer.write(content)
-                
-                # Validate face detection
-                try:
-                    # Use safe DeepFace processing with memory management
-                    print(f"   🔍 Processing photo {idx + 1} ({photo.filename})...")
-                    safe_deepface_represent(temp_path, enforce_detection=True)
-                    
-                    # Face detected successfully
-                    photo_number = saved_count + 1
-                    
-                    # 1. Save locally for embeddings
-                    local_path = os.path.join(student_folder, f"photo_{photo_number}.jpg")
-                    shutil.copy(temp_path, local_path)
-                    
-                    # 2. Upload to Supabase Storage
-                    try:
-                        storage_path = f"{student_id}/{student_name}/photo_{photo_number}.jpg"
-                        
-                        with open(temp_path, "rb") as f:
-                            file_content = f.read()
-                            
-                        print(f"📤 Uploading to Supabase: {storage_path}")
-                        print(f"   File size: {len(file_content)} bytes")
-                        print(f"   Bucket: student-photos")
-                        
-                        try:
-                            # Try to upload
-                            upload_response = supabase_client.storage.from_("student-photos").upload(
-                                storage_path,
-                                file_content,
-                                {"content-type": "image/jpeg"}
-                            )
-                            print(f"   Upload response: {upload_response}")
-                        except Exception as upload_err:
-                            # If it fails, might be because path exists, try to replace
-                            print(f"   First upload failed: {upload_err}")
-                            print(f"   Attempting to replace file...")
-                            try:
-                                upload_response = supabase_client.storage.from_("student-photos").update(
-                                    storage_path,
-                                    file_content,
-                                    {"content-type": "image/jpeg"}
-                                )
-                                print(f"   Replace successful")
-                            except Exception as replace_err:
-                                print(f"   Replace also failed: {replace_err}")
-                                raise upload_err  # Raise original error
-                        
-                        # Get public URL
-                        public_url = supabase_client.storage.from_("student-photos").get_public_url(storage_path)
-                        print(f"   ✅ Public URL: {public_url}")
-                        photo_urls.append(public_url)
-                        
-                        # Store first photo URL for student profile
-                        if first_photo_url is None:
-                            first_photo_url = public_url
-                        
-                        print(f"✅ Saved photo {photo_number} for {student_name} (local + cloud)")
-                        
-                    except Exception as storage_error:
-                        print(f"❌ CRITICAL: Cloud upload FAILED for photo {photo_number}: {storage_error}")
-                        print(f"   Error type: {type(storage_error).__name__}")
-                        print(f"   Photo saved locally only (not accessible from app)")
-                        import traceback
-                        traceback.print_exc()
-                        # DO NOT continue - this photo failed and won't be uploaded
-                    
-                    saved_count += 1
-                    
-                except ValueError:
-                    failed_photos.append({
-                        "filename": photo.filename,
-                        "reason": "No face detected in image"
-                    })
-                except Exception as e:
-                    failed_photos.append({
-                        "filename": photo.filename,
-                        "reason": f"Face detection error: {str(e)}"
-                    })
-                
-                # Clean up temp file
-                if os.path.exists(temp_path):
-                    os.remove(temp_path)
-                    
-            except Exception as e:
-                failed_photos.append({
-                    "filename": photo.filename,
-                    "reason": f"Upload error: {str(e)}"
-                })
-        
-        # Check if we have at least 1 valid photo
-        if saved_count < 1:
-            # Clean up - remove folder if not enough photos
-            if os.path.exists(student_folder):
-                shutil.rmtree(student_folder)
-            
-            raise HTTPException(
-                status_code=400,
-                detail=f"No valid photos with detectable faces. Failed photos: {failed_photos}"
-            )
-        
-        # Update student record with first photo URL (ONLY if we have a valid cloud URL)
-        db_update_success = False
-        if first_photo_url:
-            try:
-                supabase_client.table('students').update({
-                    "photo_url": first_photo_url
-                }).eq('id', student_id).execute()
-                print(f"✅ Updated student photo_url in database: {first_photo_url}")
-                db_update_success = True
-            except Exception as e:
-                print(f"❌ CRITICAL: Failed to update photo_url in database: {e}")
-                print(f"   Photo is saved locally but NOT accessible from cloud!")
-        else:
-            print(f"⚠️ WARNING: No photo_url to save (Supabase upload failed or skipped)")
-        
-        print(f"✅ Successfully uploaded {saved_count} photos for {student_name}")
-        
-        # Trigger embeddings rebuild in background
-        asyncio.create_task(rebuild_embeddings_background())
+        # Trigger INCREMENTAL embeddings update (only for this student) - FAST!
+        asyncio.create_task(add_student_embedding_background(student_id, student_name, first_photo_url))
         
         response_data = {
             "success": True,
@@ -1377,8 +1217,44 @@ async def get_student_photo(student_id: str):
         raise HTTPException(status_code=500, detail=f"Error fetching photo: {str(e)}")
 
 
+async def add_student_embedding_background(student_id: str, student_name: str, photo_url: str = None):
+    """Background task to incrementally add/update embeddings for a single student (FAST)"""
+    global embeddings_db, rebuild_status
+    
+    try:
+        # For incremental updates, we don't block other operations
+        # Just update embeddings in background
+        
+        print(f"\n[TASK] Adding embeddings for student: {student_name}")
+        
+        # Run build_embeddings.py script in incremental mode
+        result = subprocess.run(
+            ["python", "build_embeddings.py", "--incremental", student_name, photo_url or "None"],
+            cwd=os.path.dirname(__file__),
+            capture_output=True,
+            text=True,
+            timeout=60  # 1 minute timeout for single student
+        )
+        
+        if result.returncode == 0:
+            # Reload embeddings database
+            try:
+                with open(EMBEDDINGS_DB, 'rb') as f:
+                    embeddings_db = pickle.load(f)
+                print(f"[OK] Embeddings updated! {len(embeddings_db)} total students")
+            except Exception as e:
+                print(f"[WARNING] Embeddings updated but reload failed: {e}")
+        else:
+            print(f"[ERROR] Embeddings update failed: {result.stderr}")
+            
+    except subprocess.TimeoutExpired:
+        print(f"[ERROR] Embeddings update timeout for {student_name}")
+    except Exception as e:
+        print(f"[ERROR] Embeddings update error: {e}")
+
+
 async def rebuild_embeddings_background():
-    """Background task to rebuild embeddings database"""
+    """Background task to rebuild entire embeddings database (SLOW - only use when needed)"""
     global embeddings_db, rebuild_status
     
     rebuild_status["is_running"] = True
@@ -1386,7 +1262,7 @@ async def rebuild_embeddings_background():
     rebuild_status["last_status"] = "running"
     
     try:
-        print("\n🔄 Starting embeddings rebuild...")
+        print("\n[TASK] Starting full embeddings rebuild...")
         
         # Run build_embeddings.py script
         result = subprocess.run(
@@ -1402,20 +1278,20 @@ async def rebuild_embeddings_background():
             try:
                 with open(EMBEDDINGS_DB, 'rb') as f:
                     embeddings_db = pickle.load(f)
-                print(f"✅ Embeddings rebuilt successfully! {len(embeddings_db)} students loaded.")
+                print(f"[OK] Embeddings rebuilt successfully! {len(embeddings_db)} students loaded.")
                 rebuild_status["last_status"] = "success"
             except Exception as e:
-                print(f"⚠️  Embeddings built but reload failed: {e}")
+                print(f"[WARNING] Embeddings built but reload failed: {e}")
                 rebuild_status["last_status"] = "partial"
         else:
-            print(f"❌ Embeddings rebuild failed: {result.stderr}")
+            print(f"[ERROR] Embeddings rebuild failed: {result.stderr}")
             rebuild_status["last_status"] = "failed"
             
     except subprocess.TimeoutExpired:
-        print("❌ Embeddings rebuild timeout (>5 minutes)")
+        print("[ERROR] Embeddings rebuild timeout (>5 minutes)")
         rebuild_status["last_status"] = "timeout"
     except Exception as e:
-        print(f"❌ Embeddings rebuild error: {e}")
+        print(f"[ERROR] Embeddings rebuild error: {e}")
         rebuild_status["last_status"] = "error"
     finally:
         rebuild_status["is_running"] = False
