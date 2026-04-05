@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation";
 import {
   Camera,
   Users,
-  BarChart3,
   FileText,
   ScanLine,
   Bus,
@@ -18,7 +17,6 @@ export default function Navbar() {
     { href: "/camera", label: "Camera", icon: Camera },
     { href: "/trips", label: "Trips", icon: Bus },
     { href: "/students", label: "Students", icon: Users },
-    { href: "/analytics", label: "Analytics", icon: BarChart3 },
     { href: "/reports", label: "Reports", icon: FileText },
   ];
 
