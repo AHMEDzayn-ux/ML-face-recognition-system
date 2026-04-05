@@ -592,5 +592,11 @@
     "timestamp": "2026-04-06T01:18:57.211820",
     "confidence": 27.10930902178651,
     "status": "present"
+  },
+  {
+    "name": "Ruzayni",
+    "timestamp": "2026-04-06T01:40:47.824877",
+    "confidence": 47.726656065572385,
+    "status": "present"
   }
 ]
