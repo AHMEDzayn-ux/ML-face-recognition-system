@@ -46,7 +46,7 @@ export default function InstallPrompt() {
       if (window.matchMedia("(display-mode: standalone)").matches) {
         console.log("✓ App is running as PWA");
         setShowButton(false);
-      } else if (navigator.standalone === true) {
+      } else if ((navigator as any).standalone === true) {
         console.log("✓ App is running as PWA (iOS)");
         setShowButton(false);
       }
