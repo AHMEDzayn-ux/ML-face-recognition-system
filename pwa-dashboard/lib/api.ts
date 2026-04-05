@@ -1,5 +1,12 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
+// Helper function to add ngrok bypass header for all requests
+function getHeaders(): HeadersInit {
+  return {
+    'ngrok-skip-browser-warning': 'true',
+  };
+}
+
 export async function markAttendance(imageFile: File): Promise<{
   success: boolean;
   name?: string;
@@ -22,7 +29,9 @@ export async function markAttendance(imageFile: File): Promise<{
 }
 
 export async function getStudents() {
-  const response = await fetch(`${API_URL}/students`);
+  const response = await fetch(`${API_URL}/students`, {
+    headers: getHeaders(),
+  });
   if (!response.ok) {
     throw new Error('Failed to fetch students');
   }
@@ -30,7 +39,9 @@ export async function getStudents() {
 }
 
 export async function getTodayAttendance() {
-  const response = await fetch(`${API_URL}/attendance/today`);
+  const response = await fetch(`${API_URL}/attendance/today`, {
+    headers: getHeaders(),
+  });
   if (!response.ok) {
     throw new Error('Failed to fetch attendance');
   }
@@ -38,7 +49,9 @@ export async function getTodayAttendance() {
 }
 
 export async function getAllAttendance() {
-  const response = await fetch(`${API_URL}/attendance/all`);
+  const response = await fetch(`${API_URL}/attendance/all`, {
+    headers: getHeaders(),
+  });
   if (!response.ok) {
     throw new Error('Failed to fetch all attendance');
   }
@@ -148,7 +161,9 @@ export async function getRebuildStatus(): Promise<{
     last_status: string;
   };
 }> {
-  const response = await fetch(`${API_URL}/api/rebuild_status`);
+  const response = await fetch(`${API_URL}/api/rebuild_status`, {
+    headers: getHeaders(),
+  });
 
   if (!response.ok) {
     throw new Error('Failed to get rebuild status');
@@ -201,7 +216,9 @@ export async function getTrips(status?: string): Promise<{
     ? `${API_URL}/api/trips?status=${status}`
     : `${API_URL}/api/trips`;
     
-  const response = await fetch(url);
+  const response = await fetch(url, {
+    headers: getHeaders(),
+  });
   
   if (!response.ok) {
     throw new Error('Failed to fetch trips');
@@ -219,8 +236,12 @@ export async function getTrip(tripId: string): Promise<{
     missing: number;
     percentage: number;
   };
+  confirmations?: any[];
+  selected_confirmation?: any;
 }> {
-  const response = await fetch(`${API_URL}/api/trips/${tripId}`);
+  const response = await fetch(`${API_URL}/api/trips/${tripId}`, {
+    headers: getHeaders(),
+  });
   
   if (!response.ok) {
     throw new Error('Failed to fetch trip');
@@ -254,7 +275,8 @@ export async function uploadTripCSV(tripId: string, file: File): Promise<{
 
 export async function getTripParticipants(
   tripId: string,
-  checkedIn?: boolean
+  checkedIn?: boolean,
+  confirmationId?: string
 ): Promise<{
   success: boolean;
   trip: any;
@@ -265,12 +287,20 @@ export async function getTripParticipants(
     percentage: number;
   };
   participants: any[];
+  confirmations?: any[];
+  selected_confirmation?: any;
 }> {
-  const url = checkedIn !== undefined
-    ? `${API_URL}/api/trips/${tripId}/participants?checked_in=${checkedIn}`
+  const params = new URLSearchParams();
+  if (checkedIn !== undefined) params.set('checked_in', String(checkedIn));
+  if (confirmationId) params.set('confirmation_id', confirmationId);
+  const query = params.toString();
+  const url = query
+    ? `${API_URL}/api/trips/${tripId}/participants?${query}`
     : `${API_URL}/api/trips/${tripId}/participants`;
-    
-  const response = await fetch(url);
+
+  const response = await fetch(url, {
+    headers: getHeaders(),
+  });
   
   if (!response.ok) {
     throw new Error('Failed to fetch trip participants');
@@ -279,7 +309,58 @@ export async function getTripParticipants(
   return response.json();
 }
 
-export async function tripCheckin(tripId: string, imageFile: File): Promise<{
+export async function getTripConfirmations(tripId: string): Promise<{
+  success: boolean;
+  trip: any;
+  confirmations: any[];
+  selected_confirmation?: any;
+}> {
+  const response = await fetch(`${API_URL}/api/trips/${tripId}/confirmations`, {
+    headers: getHeaders(),
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch trip confirmations');
+  }
+
+  return response.json();
+}
+
+export async function createTripConfirmation(
+  tripId: string,
+  confirmationData: {
+    name: string;
+    description?: string;
+  },
+): Promise<{
+  success: boolean;
+  confirmation?: any;
+  message?: string;
+}> {
+  const formData = new FormData();
+  formData.append('name', confirmationData.name);
+  if (confirmationData.description) {
+    formData.append('description', confirmationData.description);
+  }
+
+  const response = await fetch(`${API_URL}/api/trips/${tripId}/confirmations`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to create confirmation');
+  }
+
+  return response.json();
+}
+
+export async function tripCheckin(
+  tripId: string,
+  imageFile: File,
+  confirmationId?: string
+): Promise<{
   success: boolean;
   participant?: {
     id: string;
@@ -292,6 +373,7 @@ export async function tripCheckin(tripId: string, imageFile: File): Promise<{
 }> {
   const formData = new FormData();
   formData.append('image', imageFile);
+  if (confirmationId) formData.append('confirmation_id', confirmationId);
 
   const response = await fetch(`${API_URL}/api/trips/${tripId}/checkin`, {
     method: 'POST',
@@ -309,7 +391,8 @@ export async function markManualCheckin(
   tripId: string,
   participantId?: string,
   rollNumber?: string,
-  notes?: string
+  notes?: string,
+  confirmationId?: string
 ): Promise<{
   success: boolean;
   participant?: any;
@@ -319,6 +402,7 @@ export async function markManualCheckin(
   if (participantId) formData.append('participant_id', participantId);
   if (rollNumber) formData.append('roll_number', rollNumber);
   if (notes) formData.append('notes', notes);
+  if (confirmationId) formData.append('confirmation_id', confirmationId);
 
   const response = await fetch(`${API_URL}/api/trips/${tripId}/mark-manual`, {
     method: 'POST',

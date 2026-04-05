@@ -13,6 +13,7 @@ export interface Student {
   section: string | null;
   email: string | null;
   phone: string | null;
+  photo_url: string | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -68,6 +69,14 @@ export interface TripParticipant {
   confidence: number | null;
   photo_url: string | null;
   notes: string | null;
+  confirmation_id?: string | null;
+  confirmation_status?: 'present' | 'missing' | null;
+  confirmation_check_in_time?: string | null;
+  confirmation_check_in_method?: 'face' | 'manual' | 'bulk' | null;
+  confirmation_checked_in_by?: string | null;
+  confirmation_confidence?: number | null;
+  confirmation_photo_url?: string | null;
+  confirmation_notes?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -77,6 +86,21 @@ export interface TripStats {
   checked_in: number;
   missing: number;
   percentage: number;
+}
+
+export interface TripConfirmation {
+  id: string;
+  trip_id: string;
+  name: string;
+  description: string | null;
+  status: 'open' | 'closed';
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  checked_in?: number;
+  missing?: number;
+  total?: number;
+  percentage?: number;
 }
 
 export interface TripWithStats extends Trip {

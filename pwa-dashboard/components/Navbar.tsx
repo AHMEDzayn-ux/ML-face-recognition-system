@@ -25,7 +25,7 @@ export default function Navbar() {
   ];
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 border-b border-slate-200/40 bg-slate-50/95 backdrop-blur-xl h-16">
+    <nav className="fixed top-0 left-0 right-0 z-50 border-b border-slate-200/40 bg-slate-50 h-16 will-change-transform">
       <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-5 h-full">
         <div className="flex h-full items-center justify-between gap-2 sm:gap-4">
           {/* Logo - responsive text size */}

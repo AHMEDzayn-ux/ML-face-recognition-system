@@ -27,8 +27,8 @@ def verify_faces(img1_path, img2_path):
         result = DeepFace.verify(
             img1_path=img1_path,
             img2_path=img2_path,
-            model_name="Facenet",  # 128-D embeddings
-            detector_backend="mtcnn",  # Accurate face detection
+            model_name="ArcFace",  # 512-D embeddings - more accurate
+            detector_backend="retinaface",  # Better angle handling
             enforce_detection=True
         )
         

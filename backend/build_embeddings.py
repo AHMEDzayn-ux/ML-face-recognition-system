@@ -75,8 +75,8 @@ def build_embeddings_database(known_faces_dir="known_faces", output_file="embedd
                 # Extract embedding using DeepFace
                 embedding_objs = DeepFace.represent(
                     img_path=image_path,
-                    model_name="Facenet",
-                    detector_backend="mtcnn",
+                    model_name="ArcFace",
+                    detector_backend="retinaface",
                     enforce_detection=True
                 )
                 

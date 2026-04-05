@@ -15,7 +15,8 @@
 }
 
 html {
-  scroll-behavior: smooth;
+  /* Removed smooth scroll for better performance */
+  scroll-behavior: auto;
 }
 
 body {
@@ -45,25 +46,24 @@ h4 {
 .page-shell {
   max-width: 80rem;
   margin: 0 auto;
-  padding: 1.5rem 1rem 2.5rem;
+  padding: 1rem 0.75rem 2rem;
 }
 
 @media (min-width: 640px) {
   .page-shell {
-    padding: 2rem 1.25rem 2.5rem;
+    padding: 1.5rem 1rem 2rem;
   }
 }
 
 @media (min-width: 768px) {
   .page-shell {
-    padding: 2.25rem 1rem 2.5rem;
+    padding: 1.75rem 1rem 2rem;
   }
 }
 
 .surface-card {
   border: 1px solid var(--border-soft);
-  background: linear-gradient(160deg, var(--surface-base), var(--surface-top));
-  backdrop-filter: blur(8px);
+  background: rgba(247, 251, 255, 0.9);
   border-radius: 1rem;
   box-shadow: var(--card-shadow);
 }
@@ -90,16 +90,17 @@ h4 {
 
 .fade-up {
   opacity: 0;
-  transform: translateY(12px);
-  animation: fadeUp 0.5s ease-out forwards;
+  transform: translateY(10px);
+  animation: fadeUp 0.4s ease-out forwards;
+  will-change: opacity, transform;
 }
 
 .fade-up-delay-1 {
-  animation-delay: 0.08s;
+  animation-delay: 0.05s;
 }
 
 .fade-up-delay-2 {
-  animation-delay: 0.16s;
+  animation-delay: 0.1s;
 }
 
 @keyframes fadeUp {

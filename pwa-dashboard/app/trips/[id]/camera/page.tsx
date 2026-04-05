@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { getTripParticipants, tripCheckin } from "@/lib/api";
-import { Trip, TripStats } from "@/lib/supabase";
+import { Trip, TripStats, TripConfirmation } from "@/lib/supabase";
 import { supabase } from "@/lib/supabase";
 import {
   ArrowLeft,
@@ -26,48 +26,61 @@ interface QueueItem {
 
 export default function TripCameraPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const tripId = params.id as string;
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
 
   const [trip, setTrip] = useState<Trip | null>(null);
+  const [confirmations, setConfirmations] = useState<TripConfirmation[]>([]);
+  const [selectedConfirmationId, setSelectedConfirmationId] = useState<
+    string | null
+  >(searchParams.get("confirmationId"));
   const [stats, setStats] = useState<TripStats>({
     total: 0,
     checked_in: 0,
     missing: 0,
     percentage: 0,
   });
-  const [stream, setStream] = useState<MediaStream | null>(null);
   const [uploadQueue, setUploadQueue] = useState<QueueItem[]>([]);
   const [processing, setProcessing] = useState(false);
 
   useEffect(() => {
-    loadTripData();
     startCamera();
-    
-    // Subscribe to real-time updates and get cleanup function
-    const cleanupSubscription = subscribeToUpdates();
 
     return () => {
-      // Clean up camera stream
-      if (stream) {
-        stream.getTracks().forEach((track) => track.stop());
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
       }
-      // Clean up subscription
-      cleanupSubscription();
     };
   }, [tripId]);
+
+  useEffect(() => {
+    loadTripData(selectedConfirmationId || undefined);
+
+    const cleanupSubscription = subscribeToUpdates();
+
+    return cleanupSubscription;
+  }, [tripId, selectedConfirmationId]);
 
   useEffect(() => {
     processQueue();
   }, [uploadQueue]);
 
-  const loadTripData = async () => {
+  const loadTripData = async (confirmationId?: string) => {
     try {
-      const data = await getTripParticipants(tripId);
+      const data = await getTripParticipants(tripId, undefined, confirmationId);
       if (data.success) {
         setTrip(data.trip);
         setStats(data.stats);
+        setConfirmations(data.confirmations || []);
+        setSelectedConfirmationId(
+          data.selected_confirmation?.id ||
+            confirmationId ||
+            data.confirmations?.[0]?.id ||
+            null,
+        );
       }
     } catch (error) {
       console.error("Error loading trip:", error);
@@ -76,19 +89,45 @@ export default function TripCameraPage() {
 
   const subscribeToUpdates = () => {
     const channel = supabase.channel(`trip_${tripId}_camera`);
-    
-    channel.on(
-      "postgres_changes",
-      {
-        event: "*",
-        schema: "public",
-        table: "trip_participants",
-        filter: `trip_id=eq.${tripId}`,
-      },
-      () => {
-        loadTripData();
-      }
-    ).subscribe();
+
+    channel
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "trip_participants",
+          filter: `trip_id=eq.${tripId}`,
+        },
+        () => {
+          loadTripData(selectedConfirmationId || undefined);
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "trip_confirmation_checkins",
+          filter: `trip_id=eq.${tripId}`,
+        },
+        () => {
+          loadTripData(selectedConfirmationId || undefined);
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "trip_confirmations",
+          filter: `trip_id=eq.${tripId}`,
+        },
+        () => {
+          loadTripData(selectedConfirmationId || undefined);
+        },
+      )
+      .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
@@ -110,7 +149,7 @@ export default function TripCameraPage() {
         videoRef.current.srcObject = mediaStream;
       }
 
-      setStream(mediaStream);
+      streamRef.current = mediaStream;
     } catch (error) {
       console.error("Error accessing camera:", error);
       alert("Could not access camera. Please check permissions.");
@@ -159,6 +198,8 @@ export default function TripCameraPage() {
     const pending = uploadQueue.find((item) => item.status === "pending");
     if (!pending) return;
 
+    const activeConfirmationId = selectedConfirmationId || undefined;
+
     setProcessing(true);
 
     // Mark as processing
@@ -177,9 +218,11 @@ export default function TripCameraPage() {
         },
       );
 
-      const result = await tripCheckin(tripId, file);
+      const result = await tripCheckin(tripId, file, activeConfirmationId);
 
       if (result.success) {
+        await loadTripData(activeConfirmationId);
+
         setUploadQueue((prev) =>
           prev.map((item) =>
             item.id === pending.id
@@ -241,6 +284,16 @@ export default function TripCameraPage() {
   const processingCount = uploadQueue.filter(
     (item) => item.status === "processing",
   ).length;
+  const selectedConfirmation =
+    confirmations.find(
+      (confirmation) => confirmation.id === selectedConfirmationId,
+    ) ||
+    confirmations[0] ||
+    null;
+
+  const handleConfirmationChange = (confirmationId: string) => {
+    setSelectedConfirmationId(confirmationId);
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
@@ -248,7 +301,7 @@ export default function TripCameraPage() {
         {/* Header */}
         <div className="mb-6">
           <Link
-            href={`/trips/${tripId}`}
+            href={`/trips/${tripId}${selectedConfirmationId ? `?confirmationId=${selectedConfirmationId}` : ""}`}
             className="inline-flex items-center gap-2 text-slate-300 hover:text-white mb-4"
           >
             <ArrowLeft className="h-4 w-4" />
@@ -262,7 +315,7 @@ export default function TripCameraPage() {
               </h1>
               <div className="flex items-center gap-4 text-slate-300">
                 <span>
-                  Progress: {stats.checked_in}/{stats.total} (
+                  Present: {stats.checked_in}/{stats.total} (
                   {stats.percentage.toFixed(1)}%)
                 </span>
                 <span className="w-px h-4 bg-slate-600" />
@@ -272,6 +325,40 @@ export default function TripCameraPage() {
               </div>
             </div>
           )}
+        </div>
+
+        <div className="mb-6 bg-slate-800/80 border border-slate-700 rounded-xl p-4">
+          <div className="flex flex-col lg:flex-row gap-4 lg:items-center lg:justify-between">
+            <div>
+              <div className="text-sm uppercase tracking-wide text-slate-400 font-semibold">
+                Active confirmation occasion
+              </div>
+              <div className="text-white font-semibold text-lg mt-1">
+                {selectedConfirmation?.name || "No occasion selected"}
+              </div>
+              {selectedConfirmation?.description && (
+                <p className="text-sm text-slate-400 mt-1">
+                  {selectedConfirmation.description}
+                </p>
+              )}
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-3">
+              <select
+                value={selectedConfirmationId || ""}
+                onChange={(event) =>
+                  handleConfirmationChange(event.target.value)
+                }
+                className="min-w-[240px] rounded-lg border border-slate-600 bg-slate-900 px-4 py-3 text-white focus:ring-2 focus:ring-blue-500"
+              >
+                {confirmations.map((confirmation) => (
+                  <option key={confirmation.id} value={confirmation.id}>
+                    {confirmation.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

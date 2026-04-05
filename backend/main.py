@@ -24,6 +24,7 @@ import warnings
 import shutil
 import subprocess
 import asyncio
+from collections import defaultdict
 warnings.filterwarnings('ignore')  # Suppress other warnings
 
 # Supabase integration
@@ -63,7 +64,7 @@ EMBEDDINGS_DB = "embeddings.pkl"
 ATTENDANCE_LOG = "attendance.json"
 UPLOAD_DIR = "uploads"
 KNOWN_FACES_DIR = "known_faces"
-THRESHOLD = 0.4  # Face matching threshold (original)
+THRESHOLD = 0.68  # ArcFace threshold (upgraded from 0.4 for better accuracy with tilts)
 
 # Create necessary directories
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -141,7 +142,7 @@ async def startup_event():
         try:
             DeepFace.represent(
                 img_path=dummy_path,
-                model_name="Facenet",
+                model_name="ArcFace",
                 detector_backend="retinaface",
                 enforce_detection=False
             )
@@ -345,7 +346,7 @@ async def identify_face(file: UploadFile = File(...)):
             try:
                 embedding_objs = DeepFace.represent(
                     img_path=file_path,
-                    model_name="Facenet",
+                    model_name="ArcFace",
                     detector_backend="retinaface",  # Best balance: handles angles + reasonable speed
                     enforce_detection=False  # Allow slight angle variations
                 )
@@ -428,7 +429,7 @@ async def mark_attendance(file: UploadFile = File(...)):
             try:
                 embedding_objs = DeepFace.represent(
                     img_path=file_path,
-                    model_name="Facenet",
+                    model_name="ArcFace",
                     detector_backend="retinaface",  # Best balance: handles angles + reasonable speed
                     enforce_detection=False  # Allow slight angle variations
                 )
@@ -687,10 +688,10 @@ async def upload_student_photos(
         )
     
     # Validate photo count
-    if len(photos) < 3:
+    if len(photos) < 1:
         raise HTTPException(
             status_code=400,
-            detail="Minimum 3 photos required for accurate face recognition"
+            detail="At least 1 photo is required"
         )
     
     if len(photos) > 10:
@@ -719,6 +720,8 @@ async def upload_student_photos(
         # Save and validate each photo
         saved_count = 0
         failed_photos = []
+        first_photo_url = None
+        first_photo_content = None
         
         for idx, photo in enumerate(photos):
             # Validate file type
@@ -737,11 +740,16 @@ async def upload_student_photos(
                     content = await photo.read()
                     buffer.write(content)
                 
+                # Store first photo content for Supabase upload
+                if saved_count == 0:
+                    with open(temp_path, 'rb') as f:
+                        first_photo_content = f.read()
+                
                 # Validate face detection
                 try:
                     DeepFace.represent(
                         img_path=temp_path,
-                        model_name="Facenet",
+                        model_name="ArcFace",
                         detector_backend="retinaface",
                         enforce_detection=True  # Require face detection
                     )
@@ -774,17 +782,48 @@ async def upload_student_photos(
                 })
         
         # Check if we have enough valid photos
-        if saved_count < 3:
+        if saved_count < 1:
             # Clean up - remove folder if not enough photos
             if os.path.exists(student_folder):
                 shutil.rmtree(student_folder)
             
             raise HTTPException(
                 status_code=400,
-                detail=f"Only {saved_count} valid photos with detectable faces. Minimum 3 required. Failed photos: {failed_photos}"
+                detail=f"No valid photos with detectable faces. Failed photos: {failed_photos}"
             )
         
         print(f"✅ Successfully uploaded {saved_count} photos for {student_name}")
+        
+        # Upload first photo to Supabase Storage and save URL to database
+        try:
+            if first_photo_content:
+                import mimetypes
+                file_ext = ".jpg"
+                file_name = f"{student_id}-{student_name.replace(' ', '_')}.jpg"
+                
+                # Upload to Supabase Storage
+                storage_response = supabase_client.storage.from_('student-photos').upload(
+                    file_name,
+                    first_photo_content,
+                    file_options={"content-type": "image/jpeg"}
+                )
+                
+                # Get public URL
+                public_url = supabase_client.storage.from_('student-photos').get_public_url(file_name)
+                
+                if public_url:
+                    photo_url = public_url['publicUrl'] if isinstance(public_url, dict) else str(public_url)
+                    
+                    # Update student with photo_url
+                    supabase_client.table('students').update({
+                        'photo_url': photo_url
+                    }).eq('id', student_id).execute()
+                    
+                    first_photo_url = photo_url
+                    print(f"✅ Stored first photo URL in database: {photo_url}")
+        except Exception as e:
+            print(f"⚠️  Warning: Could not upload photo to Supabase: {e}")
+            # Continue anyway - photos for face recognition are already saved
         
         # Trigger embeddings rebuild in background
         asyncio.create_task(rebuild_embeddings_background())
@@ -795,6 +834,9 @@ async def upload_student_photos(
             "photos_saved": saved_count,
             "message": f"Successfully uploaded {saved_count} photos for {student_name}"
         }
+        
+        if first_photo_url:
+            response_data["photo_url"] = first_photo_url
         
         if failed_photos:
             response_data["failed_photos"] = failed_photos
@@ -930,6 +972,161 @@ async def get_all_attendance():
 
 # ==================== TRIPS API ENDPOINTS ====================
 
+
+def get_or_create_trip_confirmations(trip_id: str):
+    """Return all confirmations for a trip, creating a default one if needed."""
+    if not supabase_client:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+
+    confirmations_result = (
+        supabase_client.table("trip_confirmations")
+        .select("*")
+        .eq("trip_id", trip_id)
+        .order("created_at", desc=False)
+        .execute()
+    )
+
+    confirmations = confirmations_result.data or []
+    if confirmations:
+        return confirmations
+
+    default_result = (
+        supabase_client.table("trip_confirmations")
+        .insert({
+            "trip_id": trip_id,
+            "name": "Confirmation 1",
+            "description": "Auto-created confirmation occasion",
+            "status": "open",
+        })
+        .execute()
+    )
+
+    return default_result.data or []
+
+
+def resolve_trip_confirmation(trip_id: str, confirmation_id: Optional[str] = None):
+    """Resolve the selected confirmation, defaulting to the latest one."""
+    confirmations = get_or_create_trip_confirmations(trip_id)
+
+    if confirmation_id:
+        selected = next((item for item in confirmations if item.get("id") == confirmation_id), None)
+        if not selected:
+            raise HTTPException(status_code=404, detail="Confirmation not found for this trip")
+        return confirmations, selected
+
+    return confirmations, confirmations[-1]
+
+
+def load_trip_roster(trip_id: str):
+    participants_result = (
+        supabase_client.table("trip_participants")
+        .select("*")
+        .eq("trip_id", trip_id)
+        .order("name")
+        .execute()
+    )
+
+    return participants_result.data or []
+
+
+def load_trip_confirmation_checkins(trip_id: str):
+    checkins_result = (
+        supabase_client.table("trip_confirmation_checkins")
+        .select("*")
+        .eq("trip_id", trip_id)
+        .execute()
+    )
+
+    return checkins_result.data or []
+
+
+def build_confirmation_payloads(confirmations, all_checkins, total_participants):
+    checkins_by_confirmation = defaultdict(list)
+
+    for record in all_checkins:
+        checkins_by_confirmation[record["confirmation_id"]].append(record)
+
+    payloads = []
+    for confirmation in confirmations:
+        present_count = len(checkins_by_confirmation.get(confirmation["id"], []))
+        payloads.append({
+            **confirmation,
+            "checked_in": present_count,
+            "missing": max(total_participants - present_count, 0),
+            "percentage": (present_count / total_participants * 100) if total_participants else 0,
+            "total": total_participants,
+        })
+
+    return payloads
+
+
+def merge_participants_with_confirmation(participants, confirmation_checkins, checked_in_filter: Optional[bool] = None):
+    records_by_participant = {record["participant_id"]: record for record in confirmation_checkins}
+    merged_participants = []
+
+    for participant in participants:
+        record = records_by_participant.get(participant["id"])
+        merged = {
+            **participant,
+            "checked_in": bool(record),
+            "check_in_time": record.get("check_in_time") if record else None,
+            "check_in_method": record.get("check_in_method") if record else None,
+            "checked_in_by": record.get("checked_in_by") if record else None,
+            "confidence": record.get("confidence") if record else None,
+            "photo_url": record.get("photo_url") if record else None,
+            "notes": record.get("notes") if record else None,
+            "confirmation_id": record.get("confirmation_id") if record else None,
+        }
+
+        if checked_in_filter is None or merged["checked_in"] == checked_in_filter:
+            merged_participants.append(merged)
+
+    return merged_participants
+
+
+def save_confirmation_checkin(
+    trip_id: str,
+    confirmation_id: str,
+    participant: dict,
+    check_in_method: str,
+    confidence: Optional[float] = None,
+    photo_url: Optional[str] = None,
+    notes: Optional[str] = None,
+):
+    payload = {
+        "trip_id": trip_id,
+        "confirmation_id": confirmation_id,
+        "participant_id": participant["id"],
+        "roll_number": participant["roll_number"],
+        "name": participant["name"],
+        "check_in_time": datetime.now().isoformat(),
+        "check_in_method": check_in_method,
+        "checked_in_by": "dashboard" if check_in_method == "manual" else None,
+        "confidence": confidence,
+        "photo_url": photo_url,
+        "notes": notes,
+    }
+
+    existing = (
+        supabase_client.table("trip_confirmation_checkins")
+        .select("*")
+        .eq("confirmation_id", confirmation_id)
+        .eq("participant_id", participant["id"])
+        .execute()
+    )
+
+    if existing.data:
+        result = (
+            supabase_client.table("trip_confirmation_checkins")
+            .update(payload)
+            .eq("id", existing.data[0]["id"])
+            .execute()
+        )
+    else:
+        result = supabase_client.table("trip_confirmation_checkins").insert(payload).execute()
+
+    return result.data[0]
+
 @app.post("/api/trips")
 async def create_trip(
     name: str = Form(...),
@@ -1014,14 +1211,13 @@ async def get_trip(trip_id: str):
         
         if not trip_result.data:
             raise HTTPException(status_code=404, detail="Trip not found")
-        
-        # Get participant count
-        participants_result = supabase_client.table("trip_participants").select("*").eq("trip_id", trip_id).execute()
-        
+
         trip = trip_result.data[0]
-        participants = participants_result.data
-        
-        checked_in_count = len([p for p in participants if p.get('checked_in')])
+        participants = load_trip_roster(trip_id)
+        confirmations, selected_confirmation = resolve_trip_confirmation(trip_id)
+        all_checkins = load_trip_confirmation_checkins(trip_id)
+        selected_checkins = [record for record in all_checkins if record["confirmation_id"] == selected_confirmation["id"]]
+        checked_in_count = len(selected_checkins)
         
         return JSONResponse(content={
             "success": True,
@@ -1031,13 +1227,82 @@ async def get_trip(trip_id: str):
                 "checked_in": checked_in_count,
                 "missing": len(participants) - checked_in_count,
                 "percentage": (checked_in_count / len(participants) * 100) if participants else 0
-            }
+            },
+            "confirmations": build_confirmation_payloads(confirmations, all_checkins, len(participants)),
+            "selected_confirmation": selected_confirmation,
         })
         
     except HTTPException:
         raise
     except Exception as e:
         print(f"Error fetching trip: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/trips/{trip_id}/confirmations")
+async def get_trip_confirmations(trip_id: str):
+    """Get all confirmation occasions for a trip"""
+    if not supabase_client:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+
+    try:
+        trip_result = supabase_client.table("trips").select("*").eq("id", trip_id).execute()
+
+        if not trip_result.data:
+            raise HTTPException(status_code=404, detail="Trip not found")
+
+        participants = load_trip_roster(trip_id)
+        confirmations, selected_confirmation = resolve_trip_confirmation(trip_id)
+        all_checkins = load_trip_confirmation_checkins(trip_id)
+
+        return JSONResponse(content={
+            "success": True,
+            "trip": trip_result.data[0],
+            "selected_confirmation": selected_confirmation,
+            "confirmations": build_confirmation_payloads(confirmations, all_checkins, len(participants)),
+        })
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error fetching confirmations: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/trips/{trip_id}/confirmations")
+async def create_trip_confirmation(
+    trip_id: str,
+    name: str = Form(...),
+    description: str = Form(None),
+):
+    """Create a new confirmation occasion for a trip"""
+    if not supabase_client:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+
+    if not name.strip():
+        raise HTTPException(status_code=400, detail="Confirmation name is required")
+
+    try:
+        trip_result = supabase_client.table("trips").select("*").eq("id", trip_id).execute()
+        if not trip_result.data:
+            raise HTTPException(status_code=404, detail="Trip not found")
+
+        result = supabase_client.table("trip_confirmations").insert({
+            "trip_id": trip_id,
+            "name": name.strip(),
+            "description": description.strip() if description else None,
+            "status": "open",
+        }).execute()
+
+        return JSONResponse(content={
+            "success": True,
+            "confirmation": result.data[0],
+        })
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error creating confirmation: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1133,11 +1398,15 @@ async def upload_trip_csv(trip_id: str, file: UploadFile = File(...)):
 
 
 @app.get("/api/trips/{trip_id}/participants")
-async def get_trip_participants(trip_id: str, checked_in: Optional[bool] = None):
+async def get_trip_participants(
+    trip_id: str,
+    checked_in: Optional[bool] = None,
+    confirmation_id: Optional[str] = None,
+):
     """
     Get participants for a trip
     
-    checked_in: true (only checked in), false (only missing), null (all)
+    checked_in: true (only present), false (only missing), null (all)
     """
     if not supabase_client:
         raise HTTPException(status_code=500, detail="Supabase not configured")
@@ -1149,29 +1418,26 @@ async def get_trip_participants(trip_id: str, checked_in: Optional[bool] = None)
         if not trip_result.data:
             raise HTTPException(status_code=404, detail="Trip not found")
         
-        # Get participants
-        query = supabase_client.table("trip_participants").select("*").eq("trip_id", trip_id)
-        
-        if checked_in is not None:
-            query = query.eq("checked_in", checked_in)
-        
-        result = query.order("name").execute()
-        participants = result.data
-        
-        # Calculate stats
-        all_participants = supabase_client.table("trip_participants").select("*").eq("trip_id", trip_id).execute().data
-        checked_in_count = len([p for p in all_participants if p.get('checked_in')])
+        participants = load_trip_roster(trip_id)
+        total_participants = len(participants)
+        confirmations, selected_confirmation = resolve_trip_confirmation(trip_id, confirmation_id)
+        all_checkins = load_trip_confirmation_checkins(trip_id)
+        selected_checkins = [record for record in all_checkins if record["confirmation_id"] == selected_confirmation["id"]]
+        participants = merge_participants_with_confirmation(participants, selected_checkins, checked_in)
+        checked_in_count = len(selected_checkins)
         
         return JSONResponse(content={
             "success": True,
             "trip": trip_result.data[0],
             "stats": {
-                "total": len(all_participants),
+                "total": total_participants,
                 "checked_in": checked_in_count,
-                "missing": len(all_participants) - checked_in_count,
-                "percentage": (checked_in_count / len(all_participants) * 100) if all_participants else 0
+                "missing": total_participants - checked_in_count,
+                "percentage": (checked_in_count / total_participants * 100) if total_participants else 0
             },
-            "participants": participants
+            "participants": participants,
+            "confirmations": build_confirmation_payloads(confirmations, all_checkins, total_participants),
+            "selected_confirmation": selected_confirmation,
         })
         
     except HTTPException:
@@ -1182,7 +1448,11 @@ async def get_trip_participants(trip_id: str, checked_in: Optional[bool] = None)
 
 
 @app.post("/api/trips/{trip_id}/checkin")
-async def trip_checkin(trip_id: str, image: UploadFile = File(...)):
+async def trip_checkin(
+    trip_id: str,
+    image: UploadFile = File(...),
+    confirmation_id: str = Form(None),
+):
     """
     Check in a student for a trip using face recognition
     
@@ -1192,13 +1462,26 @@ async def trip_checkin(trip_id: str, image: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail="Supabase not configured")
     
     try:
-        # Get trip participants
-        participants_result = supabase_client.table("trip_participants").select("*, students(*)").eq("trip_id", trip_id).eq("checked_in", False).execute()
-        
-        if not participants_result.data:
+        # Get trip participants and selected confirmation
+        participants_result = supabase_client.table("trip_participants").select("*, students(*)").eq("trip_id", trip_id).execute()
+        participants = participants_result.data or []
+        confirmations, selected_confirmation = resolve_trip_confirmation(trip_id, confirmation_id)
+        all_checkins = load_trip_confirmation_checkins(trip_id)
+        selected_checkins = [record for record in all_checkins if record["confirmation_id"] == selected_confirmation["id"]]
+        checked_in_ids = {record["participant_id"] for record in selected_checkins}
+
+        if not participants:
             return JSONResponse(content={
                 "success": False,
-                "message": "All participants already checked in or no participants found"
+                "message": "No participants found for this trip"
+            })
+
+        eligible_participants = [participant for participant in participants if participant["id"] not in checked_in_ids]
+
+        if not eligible_participants:
+            return JSONResponse(content={
+                "success": False,
+                "message": "All participants already confirmed for this occasion"
             })
         
         # Save uploaded image
@@ -1224,7 +1507,7 @@ async def trip_checkin(trip_id: str, image: UploadFile = File(...)):
         try:
             test_embedding = DeepFace.represent(
                 img_path=final_path,
-                model_name="Facenet",
+                model_name="ArcFace",
                 detector_backend="retinaface",
                 enforce_detection=True
             )[0]["embedding"]
@@ -1238,7 +1521,7 @@ async def trip_checkin(trip_id: str, image: UploadFile = File(...)):
         
         # Build filtered embeddings dict (only trip participants)
         trip_embeddings = {}
-        for participant in participants_result.data:
+        for participant in eligible_participants:
             student_name = participant.get('name')
             if student_name and student_name in embeddings_db:
                 trip_embeddings[student_name] = embeddings_db[student_name]
@@ -1263,19 +1546,17 @@ async def trip_checkin(trip_id: str, image: UploadFile = File(...)):
             confidence = (1 - (best_distance / THRESHOLD)) * 100
             
             # Find participant record
-            participant = next((p for p in participants_result.data if p.get('name') == best_match), None)
+            participant = next((p for p in eligible_participants if p.get('name') == best_match), None)
             
             if participant:
-                # Update participant as checked in
-                update_data = {
-                    "checked_in": True,
-                    "check_in_time": datetime.now().isoformat(),
-                    "check_in_method": "face",
-                    "confidence": confidence,
-                    "photo_url": upload_path
-                }
-
-                supabase_client.table("trip_participants").update(update_data).eq("id", participant['id']).execute()
+                saved_checkin = save_confirmation_checkin(
+                    trip_id=trip_id,
+                    confirmation_id=selected_confirmation["id"],
+                    participant=participant,
+                    check_in_method="face",
+                    confidence=confidence,
+                    photo_url=upload_path,
+                )
 
                 # Clean up temporary file
                 try:
@@ -1286,12 +1567,14 @@ async def trip_checkin(trip_id: str, image: UploadFile = File(...)):
 
                 return JSONResponse(content={
                     "success": True,
+                    "confirmation": selected_confirmation,
                     "participant": {
                         "id": participant['id'],
                         "roll_number": participant['roll_number'],
                         "name": participant['name'],
                         "confidence": round(confidence, 2),
-                        "check_in_time": update_data['check_in_time']
+                        "check_in_time": saved_checkin['check_in_time'],
+                        "confirmation_id": selected_confirmation["id"],
                     }
                 })
 
@@ -1321,7 +1604,8 @@ async def mark_manual_checkin(
     trip_id: str,
     participant_id: str = Form(None),
     roll_number: str = Form(None),
-    notes: str = Form(None)
+    notes: str = Form(None),
+    confirmation_id: str = Form(None),
 ):
     """
     Manually check in a student (no face recognition)
@@ -1347,22 +1631,28 @@ async def mark_manual_checkin(
             raise HTTPException(status_code=404, detail="Participant not found in this trip")
         
         participant = result.data[0]
-        
-        # Update as checked in
-        update_data = {
-            "checked_in": True,
-            "check_in_time": datetime.now().isoformat(),
-            "check_in_method": "manual",
-            "notes": notes or "Manual check-in"
-        }
-        
-        supabase_client.table("trip_participants").update(update_data).eq("id", participant['id']).execute()
+        confirmations, selected_confirmation = resolve_trip_confirmation(trip_id, confirmation_id)
+
+        update_data = save_confirmation_checkin(
+            trip_id=trip_id,
+            confirmation_id=selected_confirmation["id"],
+            participant=participant,
+            check_in_method="manual",
+            notes=notes or "Manual check-in",
+        )
         
         return JSONResponse(content={
             "success": True,
             "participant": {
                 **participant,
-                **update_data
+                "checked_in": True,
+                "check_in_time": update_data["check_in_time"],
+                "check_in_method": update_data["check_in_method"],
+                "checked_in_by": update_data["checked_in_by"],
+                "confidence": update_data["confidence"],
+                "photo_url": update_data["photo_url"],
+                "notes": update_data["notes"],
+                "confirmation_id": selected_confirmation["id"],
             }
         })
         

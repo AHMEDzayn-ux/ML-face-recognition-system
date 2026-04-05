@@ -496,5 +496,341 @@
     "timestamp": "2026-04-05T15:17:10.532305",
     "confidence": 12.20324510246562,
     "status": "present"
+  },
+  {
+    "name": "Carlos_Menem",
+    "timestamp": "2026-04-05T15:32:24.938069",
+    "confidence": 95.53185823584272,
+    "status": "present"
+  },
+  {
+    "name": "Ruzaini_Ahmedh",
+    "timestamp": "2026-04-05T15:32:48.388092",
+    "confidence": 1.3475697103072504,
+    "status": "present"
+  },
+  {
+    "name": "Ruzaini_Ahmedh",
+    "timestamp": "2026-04-05T15:35:13.321236",
+    "confidence": 3.438265599171486,
+    "status": "present"
+  },
+  {
+    "name": "Ruzaini_Ahmedh",
+    "timestamp": "2026-04-05T15:35:19.838126",
+    "confidence": 0.12984863849546668,
+    "status": "present"
+  },
+  {
+    "name": "Ruzaini_Ahmedh",
+    "timestamp": "2026-04-05T15:35:24.531688",
+    "confidence": 4.181564963097095,
+    "status": "present"
+  },
+  {
+    "name": "Ruzaini_Ahmedh",
+    "timestamp": "2026-04-05T15:35:31.007930",
+    "confidence": 4.834914358258446,
+    "status": "present"
+  },
+  {
+    "name": "Ruzaini_Ahmedh",
+    "timestamp": "2026-04-05T15:35:35.593983",
+    "confidence": 16.682011168450305,
+    "status": "present"
+  },
+  {
+    "name": "Ruzaini_Ahmedh",
+    "timestamp": "2026-04-05T15:43:50.304052",
+    "confidence": 4.6382974445595915,
+    "status": "present"
+  },
+  {
+    "name": "Ruzaini_Ahmedh",
+    "timestamp": "2026-04-05T15:45:02.296562",
+    "confidence": 2.882702307882068,
+    "status": "present"
+  },
+  {
+    "name": "Ruzaini_Ahmedh",
+    "timestamp": "2026-04-05T15:45:28.499602",
+    "confidence": 2.7598512402587594,
+    "status": "present"
+  },
+  {
+    "name": "Alain_Cervantes",
+    "timestamp": "2026-04-05T15:45:44.463382",
+    "confidence": 10.45938292757117,
+    "status": "present"
+  },
+  {
+    "name": "Ruzaini_Ahmedh",
+    "timestamp": "2026-04-05T15:45:49.281173",
+    "confidence": 7.185000837539257,
+    "status": "present"
+  },
+  {
+    "name": "Bijan_Namdar_Zangeneh",
+    "timestamp": "2026-04-05T15:45:56.304539",
+    "confidence": 20.10649052286184,
+    "status": "present"
+  },
+  {
+    "name": "Bijan_Namdar_Zangeneh",
+    "timestamp": "2026-04-05T15:46:09.733555",
+    "confidence": 12.5374660354022,
+    "status": "present"
+  },
+  {
+    "name": "Ruzaini_Ahmedh",
+    "timestamp": "2026-04-05T16:42:51.387374",
+    "confidence": 14.518605384312677,
+    "status": "present"
+  },
+  {
+    "name": "Ruzaini_Ahmedh",
+    "timestamp": "2026-04-05T16:43:01.946981",
+    "confidence": 19.3904168660469,
+    "status": "present"
+  },
+  {
+    "name": "Carolina_Barco",
+    "timestamp": "2026-04-05T16:43:21.554139",
+    "confidence": 0.33162181605214114,
+    "status": "present"
+  },
+  {
+    "name": "Carolina_Barco",
+    "timestamp": "2026-04-05T16:44:32.247545",
+    "confidence": 9.331102396889456,
+    "status": "present"
+  },
+  {
+    "name": "Carolina_Barco",
+    "timestamp": "2026-04-05T16:44:42.924996",
+    "confidence": 76.10452819353453,
+    "status": "present"
+  },
+  {
+    "name": "Charmaine_Crooks",
+    "timestamp": "2026-04-05T16:45:35.730453",
+    "confidence": 5.468180670383315,
+    "status": "present"
+  },
+  {
+    "name": "Ruzaini_Ahmedh",
+    "timestamp": "2026-04-05T16:45:46.135355",
+    "confidence": 17.5169890011832,
+    "status": "present"
+  },
+  {
+    "name": "Ruzaini_Ahmedh",
+    "timestamp": "2026-04-05T16:45:54.428272",
+    "confidence": 7.519609092029689,
+    "status": "present"
+  },
+  {
+    "name": "Ruzaini_Ahmedh",
+    "timestamp": "2026-04-05T16:46:01.091545",
+    "confidence": 15.701826784641016,
+    "status": "present"
+  },
+  {
+    "name": "Ruzaini_Ahmedh",
+    "timestamp": "2026-04-05T16:46:09.081540",
+    "confidence": 12.092445802123809,
+    "status": "present"
+  },
+  {
+    "name": "Charmaine_Crooks",
+    "timestamp": "2026-04-05T16:46:14.717675",
+    "confidence": 12.525726358103084,
+    "status": "present"
+  },
+  {
+    "name": "Ruzaini_Ahmedh",
+    "timestamp": "2026-04-05T16:46:20.587944",
+    "confidence": 13.09245206167321,
+    "status": "present"
+  },
+  {
+    "name": "Charmaine_Crooks",
+    "timestamp": "2026-04-05T16:46:26.416251",
+    "confidence": 10.259783275051825,
+    "status": "present"
+  },
+  {
+    "name": "Charmaine_Crooks",
+    "timestamp": "2026-04-05T16:46:34.604219",
+    "confidence": 12.768655796689444,
+    "status": "present"
+  },
+  {
+    "name": "Ruzaini_Ahmedh",
+    "timestamp": "2026-04-05T16:46:41.793908",
+    "confidence": 8.991189940194655,
+    "status": "present"
+  },
+  {
+    "name": "Ruzaini_Ahmedh",
+    "timestamp": "2026-04-05T16:46:46.750965",
+    "confidence": 15.72149468884062,
+    "status": "present"
+  },
+  {
+    "name": "Ruzaini_Ahmedh",
+    "timestamp": "2026-04-05T16:46:52.527735",
+    "confidence": 17.39747626945124,
+    "status": "present"
+  },
+  {
+    "name": "Ruzaini_Ahmedh",
+    "timestamp": "2026-04-05T16:46:55.956420",
+    "confidence": 14.59495941064911,
+    "status": "present"
+  },
+  {
+    "name": "Ruzaini_Ahmedh",
+    "timestamp": "2026-04-05T16:46:59.522683",
+    "confidence": 6.359161651726009,
+    "status": "present"
+  },
+  {
+    "name": "Ruzaini_Ahmedh",
+    "timestamp": "2026-04-05T16:47:02.725897",
+    "confidence": 15.345664231255295,
+    "status": "present"
+  },
+  {
+    "name": "Ruzaini_Ahmedh",
+    "timestamp": "2026-04-05T16:47:05.889756",
+    "confidence": 11.501689938743542,
+    "status": "present"
+  },
+  {
+    "name": "Ruzaini_Ahmedh",
+    "timestamp": "2026-04-05T16:47:09.026294",
+    "confidence": 16.342859427833567,
+    "status": "present"
+  },
+  {
+    "name": "Ruzaini_Ahmedh",
+    "timestamp": "2026-04-05T16:47:12.290181",
+    "confidence": 13.523804892565316,
+    "status": "present"
+  },
+  {
+    "name": "Ruzaini_Ahmedh",
+    "timestamp": "2026-04-05T16:47:15.411243",
+    "confidence": 14.36162711399962,
+    "status": "present"
+  },
+  {
+    "name": "Ruzaini_Ahmedh",
+    "timestamp": "2026-04-05T16:47:18.601826",
+    "confidence": 16.067618648693927,
+    "status": "present"
+  },
+  {
+    "name": "Ruzaini_Ahmedh",
+    "timestamp": "2026-04-05T16:47:21.749941",
+    "confidence": 11.77245015606152,
+    "status": "present"
+  },
+  {
+    "name": "Ruzaini_Ahmedh",
+    "timestamp": "2026-04-05T16:47:24.779871",
+    "confidence": 15.590832533798139,
+    "status": "present"
+  },
+  {
+    "name": "Ruzaini_Ahmedh",
+    "timestamp": "2026-04-05T16:47:27.945947",
+    "confidence": 12.676100812578683,
+    "status": "present"
+  },
+  {
+    "name": "Ruzaini_Ahmedh",
+    "timestamp": "2026-04-05T16:47:31.202718",
+    "confidence": 18.122957691535724,
+    "status": "present"
+  },
+  {
+    "name": "Ruzaini_Ahmedh",
+    "timestamp": "2026-04-05T16:47:34.335019",
+    "confidence": 13.343600015925583,
+    "status": "present"
+  },
+  {
+    "name": "Ruzaini_Ahmedh",
+    "timestamp": "2026-04-05T16:47:37.368213",
+    "confidence": 16.925313722593817,
+    "status": "present"
+  },
+  {
+    "name": "Ruzaini_Ahmedh",
+    "timestamp": "2026-04-05T16:47:40.532496",
+    "confidence": 18.327486896854982,
+    "status": "present"
+  },
+  {
+    "name": "Ruzaini_Ahmedh",
+    "timestamp": "2026-04-05T16:47:43.754010",
+    "confidence": 10.105926391762864,
+    "status": "present"
+  },
+  {
+    "name": "Ruzaini_Ahmedh",
+    "timestamp": "2026-04-05T16:47:47.679838",
+    "confidence": 8.471443757321106,
+    "status": "present"
+  },
+  {
+    "name": "Ruzaini_Ahmedh",
+    "timestamp": "2026-04-05T16:47:51.508377",
+    "confidence": 10.975957729172126,
+    "status": "present"
+  },
+  {
+    "name": "Ruzaini_Ahmedh",
+    "timestamp": "2026-04-05T16:47:58.686914",
+    "confidence": 15.889629670066508,
+    "status": "present"
+  },
+  {
+    "name": "Ruzaini_Ahmedh",
+    "timestamp": "2026-04-05T16:48:02.036410",
+    "confidence": 21.433806164029157,
+    "status": "present"
+  },
+  {
+    "name": "Ruzaini_Ahmedh",
+    "timestamp": "2026-04-05T16:48:05.171726",
+    "confidence": 15.504654604777823,
+    "status": "present"
+  },
+  {
+    "name": "Carolina_Barco",
+    "timestamp": "2026-04-05T16:50:13.450014",
+    "confidence": 11.306929283148403,
+    "status": "present"
+  },
+  {
+    "name": "Carolina_Barco",
+    "timestamp": "2026-04-05T16:50:25.724376",
+    "confidence": 32.37880347736555,
+    "status": "present"
+  },
+  {
+    "name": "Ruzaini_Ahmedh",
+    "timestamp": "2026-04-05T17:56:14.854146",
+    "confidence": 2.3185875250728127,
+    "status": "present"
+  },
+  {
+    "name": "Ruzaini_Ahmedh",
+    "timestamp": "2026-04-05T17:58:36.366128",
+    "confidence": 22.849495533385266,
+    "status": "present"
   }
 ]

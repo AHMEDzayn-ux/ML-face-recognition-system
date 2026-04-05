@@ -1,16 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+import { useParams } from "next/navigation";
 import Link from "next/link";
-import {
-  getTripParticipants,
-  markManualCheckin,
-  updateTripStatus,
-} from "@/lib/api";
-import { TripParticipant, Trip, TripStats } from "@/lib/supabase";
-import { supabase } from "@/lib/supabase";
-import AddParticipantsDialog from "@/components/AddParticipantsDialog";
 import {
   ArrowLeft,
   Camera,
@@ -24,12 +16,36 @@ import {
   AlertCircle,
   UserCheck,
   UserPlus,
+  Sparkles,
+  Plus,
 } from "lucide-react";
+import AddParticipantsDialog from "@/components/AddParticipantsDialog";
+import {
+  createTripConfirmation,
+  getTripParticipants,
+  markManualCheckin,
+  removeParticipantFromTrip,
+  updateTripStatus,
+} from "@/lib/api";
+import {
+  TripParticipant,
+  Trip,
+  TripStats,
+  TripConfirmation,
+} from "@/lib/supabase";
+import { supabase } from "@/lib/supabase";
 
 export default function TripDashboardPage() {
   const params = useParams();
-  const router = useRouter();
   const tripId = params.id as string;
+
+  type CachedTripData = {
+    trip: Trip;
+    stats: TripStats;
+    participants: TripParticipant[];
+    confirmations: TripConfirmation[];
+    selectedConfirmationId: string | null;
+  };
 
   const [trip, setTrip] = useState<Trip | null>(null);
   const [stats, setStats] = useState<TripStats>({
@@ -38,53 +54,151 @@ export default function TripDashboardPage() {
     missing: 0,
     percentage: 0,
   });
+  const [confirmations, setConfirmations] = useState<TripConfirmation[]>([]);
+  const [selectedConfirmationId, setSelectedConfirmationId] = useState<
+    string | null
+  >(null);
   const [participants, setParticipants] = useState<TripParticipant[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [sessionLoadingId, setSessionLoadingId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [filter, setFilter] = useState<"all" | "checked_in" | "missing">("all");
   const [showAddDialog, setShowAddDialog] = useState(false);
+  const [confirmationName, setConfirmationName] = useState("");
+  const [confirmationDescription, setConfirmationDescription] = useState("");
+  const [creatingConfirmation, setCreatingConfirmation] = useState(false);
+  const [removingParticipantId, setRemovingParticipantId] = useState<
+    string | null
+  >(null);
+  const sessionCacheRef = useRef<Record<string, CachedTripData>>({});
 
   useEffect(() => {
-    loadTripData();
-    
+    loadTripData(undefined, { showInitialLoader: true, useCache: false });
+
     // Subscribe to real-time updates and return cleanup function
     const cleanup = subscribeToUpdates();
     return cleanup;
   }, [tripId]);
 
-  const loadTripData = async () => {
+  useEffect(() => {
+    if (!trip) {
+      return;
+    }
+
+    loadTripData(selectedConfirmationId || undefined);
+  }, [selectedConfirmationId]);
+
+  const loadTripData = async (
+    confirmationId?: string,
+    options: { showInitialLoader?: boolean; useCache?: boolean } = {},
+  ) => {
+    const sessionKey = confirmationId || "__default__";
+    const useCache = options.useCache !== false;
+
+    if (useCache && sessionCacheRef.current[sessionKey]) {
+      const cached = sessionCacheRef.current[sessionKey];
+      setTrip(cached.trip);
+      setStats(cached.stats);
+      setParticipants(cached.participants);
+      setConfirmations(cached.confirmations);
+      setSelectedConfirmationId(cached.selectedConfirmationId);
+      return;
+    }
+
     try {
-      setLoading(true);
-      const data = await getTripParticipants(tripId);
+      if (options.showInitialLoader) {
+        setInitialLoading(true);
+      } else {
+        setSessionLoadingId(sessionKey);
+      }
+
+      const data = await getTripParticipants(tripId, undefined, confirmationId);
 
       if (data.success) {
+        const resolvedSelectedConfirmationId =
+          data.selected_confirmation?.id ||
+          confirmationId ||
+          data.confirmations?.[0]?.id ||
+          null;
+
+        const nextValue: CachedTripData = {
+          trip: data.trip,
+          stats: data.stats,
+          participants: data.participants,
+          confirmations: data.confirmations || [],
+          selectedConfirmationId: resolvedSelectedConfirmationId,
+        };
+
+        sessionCacheRef.current[sessionKey] = nextValue;
+        if (resolvedSelectedConfirmationId) {
+          sessionCacheRef.current[resolvedSelectedConfirmationId] = nextValue;
+        }
+
         setTrip(data.trip);
         setStats(data.stats);
         setParticipants(data.participants);
+        setConfirmations(data.confirmations || []);
+        setSelectedConfirmationId(resolvedSelectedConfirmationId);
       }
     } catch (error) {
       console.error("Error loading trip:", error);
     } finally {
-      setLoading(false);
+      if (options.showInitialLoader) {
+        setInitialLoading(false);
+      } else {
+        setSessionLoadingId(null);
+      }
     }
   };
 
   const subscribeToUpdates = () => {
     const channel = supabase.channel(`trip_${tripId}_participants`);
-    
-    channel.on(
-      "postgres_changes",
-      {
-        event: "*",
-        schema: "public",
-        table: "trip_participants",
-        filter: `trip_id=eq.${tripId}`,
-      },
-      (payload) => {
-        console.log("Real-time update:", payload);
-        loadTripData();
-      }
-    ).subscribe();
+
+    channel
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "trip_participants",
+          filter: `trip_id=eq.${tripId}`,
+        },
+        (payload) => {
+          console.log("Real-time update:", payload);
+          loadTripData(selectedConfirmationId || undefined, {
+            useCache: false,
+          });
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "trip_confirmation_checkins",
+          filter: `trip_id=eq.${tripId}`,
+        },
+        () => {
+          loadTripData(selectedConfirmationId || undefined, {
+            useCache: false,
+          });
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "trip_confirmations",
+          filter: `trip_id=eq.${tripId}`,
+        },
+        () => {
+          loadTripData(selectedConfirmationId || undefined, {
+            useCache: false,
+          });
+        },
+      )
+      .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
@@ -98,17 +212,64 @@ export default function TripDashboardPage() {
         participant.id,
         undefined,
         "Manual check-in from dashboard",
+        selectedConfirmationId || undefined,
       );
-      loadTripData();
+      loadTripData(selectedConfirmationId || undefined, { useCache: false });
     } catch (error) {
       console.error("Error checking in:", error);
+    }
+  };
+
+  const handleRemoveParticipant = async (participant: TripParticipant) => {
+    try {
+      setRemovingParticipantId(participant.id);
+      await removeParticipantFromTrip(tripId, participant.id);
+      await loadTripData(selectedConfirmationId || undefined, {
+        useCache: false,
+      });
+    } catch (error) {
+      console.error("Error removing participant:", error);
+    } finally {
+      setRemovingParticipantId(null);
+    }
+  };
+
+  const handleConfirmationChange = (confirmationId: string) => {
+    setSelectedConfirmationId(confirmationId);
+  };
+
+  const handleCreateConfirmation = async (event: React.FormEvent) => {
+    event.preventDefault();
+
+    if (!confirmationName.trim()) {
+      return;
+    }
+
+    try {
+      setCreatingConfirmation(true);
+      const result = await createTripConfirmation(tripId, {
+        name: confirmationName.trim(),
+        description: confirmationDescription.trim() || undefined,
+      });
+
+      setConfirmationName("");
+      setConfirmationDescription("");
+
+      const newConfirmationId = result.confirmation?.id;
+      if (newConfirmationId) {
+        setSelectedConfirmationId(newConfirmationId);
+      }
+    } catch (error) {
+      console.error("Error creating confirmation:", error);
+    } finally {
+      setCreatingConfirmation(false);
     }
   };
 
   const handleUpdateStatus = async (status: string) => {
     try {
       await updateTripStatus(tripId, status);
-      loadTripData();
+      loadTripData(selectedConfirmationId || undefined, { useCache: false });
     } catch (error) {
       console.error("Error updating status:", error);
     }
@@ -128,9 +289,8 @@ export default function TripDashboardPage() {
   });
 
   const missingParticipants = participants.filter((p) => !p.checked_in);
-  const checkedInParticipants = participants.filter((p) => p.checked_in);
 
-  if (loading) {
+  if (initialLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-sky-50/30 flex items-center justify-center">
         <Loader2 className="h-12 w-12 animate-spin text-blue-600" />
@@ -219,7 +379,7 @@ export default function TripDashboardPage() {
                 </button>
               )}
               <Link
-                href={`/trips/${tripId}/camera`}
+                href={`/trips/${tripId}/camera${selectedConfirmationId ? `?confirmationId=${selectedConfirmationId}` : ""}`}
                 className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-semibold shadow-lg shadow-blue-600/30"
               >
                 <Camera className="h-5 w-5" />
@@ -227,6 +387,115 @@ export default function TripDashboardPage() {
               </Link>
             </div>
           </div>
+        </div>
+
+        {/* Confirmation Occasions */}
+        <div className="bg-white rounded-xl border border-slate-200 p-6 mb-6 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-blue-600" />
+                Confirmation Occasions
+              </h2>
+              <p className="text-sm text-slate-600 mt-1">
+                Create separate sessions for each headcount so you can track who
+                is present or missing each time.
+              </p>
+            </div>
+            <span className="text-sm font-semibold text-slate-500">
+              {sessionLoadingId
+                ? "Refreshing..."
+                : `${confirmations.length} total`}
+            </span>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {confirmations.length === 0 ? (
+              <div className="md:col-span-2 xl:col-span-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-600">
+                No confirmation occasions yet. Use the form below to add the
+                first one.
+              </div>
+            ) : (
+              confirmations.map((confirmation) => {
+                const isSelected = confirmation.id === selectedConfirmationId;
+
+                return (
+                  <button
+                    key={confirmation.id}
+                    type="button"
+                    onClick={() => handleConfirmationChange(confirmation.id)}
+                    className={`text-left rounded-xl border p-4 transition-all ${
+                      isSelected
+                        ? "border-blue-500 bg-blue-50 shadow-md"
+                        : "border-slate-200 bg-slate-50 hover:bg-slate-100"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="font-semibold text-slate-900">
+                          {confirmation.name}
+                        </div>
+                        {confirmation.description && (
+                          <div className="text-sm text-slate-600 mt-1">
+                            {confirmation.description}
+                          </div>
+                        )}
+                      </div>
+                      {isSelected && (
+                        <span className="text-xs font-semibold px-2 py-1 rounded-full bg-blue-600 text-white">
+                          Active
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="mt-4 flex items-center gap-4 text-sm">
+                      <span className="text-green-700 font-semibold">
+                        Present {confirmation.checked_in || 0}
+                      </span>
+                      <span className="text-red-700 font-semibold">
+                        Missing {confirmation.missing || 0}
+                      </span>
+                      {sessionLoadingId === confirmation.id && (
+                        <span className="text-slate-500 text-xs font-semibold">
+                          Loading...
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                );
+              })
+            )}
+          </div>
+
+          <form
+            onSubmit={handleCreateConfirmation}
+            className="mt-6 grid gap-3 md:grid-cols-[1fr_1fr_auto]"
+          >
+            <input
+              type="text"
+              value={confirmationName}
+              onChange={(event) => setConfirmationName(event.target.value)}
+              placeholder="New occasion name, e.g. Morning headcount"
+              className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+            <input
+              type="text"
+              value={confirmationDescription}
+              onChange={(event) =>
+                setConfirmationDescription(event.target.value)
+              }
+              placeholder="Optional note or location"
+              className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+            <button
+              type="submit"
+              disabled={creatingConfirmation || !confirmationName.trim()}
+              className="inline-flex items-center justify-center gap-2 px-4 py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Plus className="h-4 w-4" />
+              {creatingConfirmation ? "Adding..." : "Add Occasion"}
+            </button>
+          </form>
         </div>
 
         {/* Progress Bar */}
@@ -293,7 +562,7 @@ export default function TripDashboardPage() {
                     : "bg-green-50 text-green-600 hover:bg-green-100"
                 }`}
               >
-                Checked In ({stats.checked_in})
+                Present ({stats.checked_in})
               </button>
             </div>
           </div>
@@ -327,7 +596,7 @@ export default function TripDashboardPage() {
                         onClick={() => handleManualCheckin(p)}
                         className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs font-semibold"
                       >
-                        Check In
+                        Present
                       </button>
                     </div>
                   ))}
@@ -409,15 +678,30 @@ export default function TripDashboardPage() {
                       </div>
                     </div>
 
-                    {!participant.checked_in && (
+                    <div className="flex items-center gap-2">
+                      {!participant.checked_in && (
+                        <button
+                          onClick={() => handleManualCheckin(participant)}
+                          className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold text-sm transition-all"
+                        >
+                          <UserCheck className="h-4 w-4" />
+                          Present
+                        </button>
+                      )}
+
                       <button
-                        onClick={() => handleManualCheckin(participant)}
-                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold text-sm transition-all"
+                        onClick={() => handleRemoveParticipant(participant)}
+                        disabled={removingParticipantId === participant.id}
+                        className="flex items-center gap-2 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-semibold text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        <UserCheck className="h-4 w-4" />
-                        Check In
+                        {removingParticipantId === participant.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <XCircle className="h-4 w-4" />
+                        )}
+                        Remove
                       </button>
-                    )}
+                    </div>
                   </div>
                 </div>
               ))
