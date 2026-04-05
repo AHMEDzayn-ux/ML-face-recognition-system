@@ -218,17 +218,15 @@ export default function ReportsPage() {
   }
 
   return (
-    <div className="page-shell max-w-4xl">
+    <div className="page-shell max-w-2xl">
       {/* Success/Error Messages */}
       {success && (
-        <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg flex items-start gap-3">
-          <CheckCircle className="w-5 h-5 text-green-600 mt-0.5" />
-          <div>
-            <p className="text-sm font-medium text-green-900">{success}</p>
-          </div>
+        <div className="mb-2 p-2 bg-green-50 border border-green-200 rounded flex items-start gap-2 text-xs">
+          <CheckCircle className="w-3.5 h-3.5 text-green-600 flex-shrink-0 mt-0.5" />
+          <p className="text-green-900 flex-1">{success}</p>
           <button
             onClick={() => setSuccess(null)}
-            className="ml-auto text-green-600 hover:text-green-800"
+            className="text-green-600 hover:text-green-800 flex-shrink-0"
           >
             ✕
           </button>
@@ -236,81 +234,78 @@ export default function ReportsPage() {
       )}
 
       {error && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
-          <AlertCircle className="w-5 h-5 text-red-600 mt-0.5" />
-          <div>
-            <p className="text-sm font-medium text-red-900">{error}</p>
-          </div>
+        <div className="mb-2 p-2 bg-red-50 border border-red-200 rounded flex items-start gap-2 text-xs">
+          <AlertCircle className="w-3.5 h-3.5 text-red-600 flex-shrink-0 mt-0.5" />
+          <p className="text-red-900 flex-1">{error}</p>
           <button
             onClick={() => setError(null)}
-            className="ml-auto text-red-600 hover:text-red-800"
+            className="text-red-600 hover:text-red-800 flex-shrink-0"
           >
             ✕
           </button>
         </div>
       )}
 
-      <div className="mb-8">
-        <h1 className="section-title text-3xl flex items-center">
-          <FileText className="w-8 h-8 mr-3 text-sky-700" />
+      <div className="mb-4">
+        <h1 className="section-title text-xl flex items-center gap-1.5">
+          <FileText className="w-5 h-5 text-sky-700" />
           Reports
         </h1>
-        <p className="section-subtitle mt-2">
-          Export attendance data to Excel or PDF
+        <p className="section-subtitle mt-1 text-xs">
+          Export attendance data
         </p>
       </div>
 
       {/* Date Range Filter */}
-      <div className="surface-card p-6 mb-6">
-        <h2 className="text-lg font-semibold text-slate-900 mb-4 flex items-center">
-          <Calendar className="w-5 h-5 mr-2 text-sky-700" />
-          Select Date Range
+      <div className="surface-card p-3 mb-3">
+        <h2 className="text-sm font-semibold text-slate-900 mb-2 flex items-center gap-1.5">
+          <Calendar className="w-4 h-4 text-sky-700" />
+          Date Range
         </h2>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
+            <label className="block text-xs font-medium text-slate-700 mb-1">
               Start Date
             </label>
             <input
               type="date"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 bg-white py-2.5 px-3 shadow-sm outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
+              className="w-full rounded border border-slate-300 bg-white py-1.5 px-2.5 shadow-sm outline-none text-xs transition focus:border-sky-500 focus:ring-1 focus:ring-sky-200"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
+            <label className="block text-xs font-medium text-slate-700 mb-1">
               End Date
             </label>
             <input
               type="date"
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 bg-white py-2.5 px-3 shadow-sm outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
+              className="w-full rounded border border-slate-300 bg-white py-1.5 px-2.5 shadow-sm outline-none text-xs transition focus:border-sky-500 focus:ring-1 focus:ring-sky-200"
             />
           </div>
         </div>
 
         {/* Record Count Preview */}
         {recordCount !== null && (
-          <div className="mt-4 p-3 bg-sky-50 border border-sky-200 rounded-lg">
-            <p className="text-sm text-sky-900">
-              📊 <strong>{recordCount}</strong> attendance record
-              {recordCount !== 1 ? "s" : ""} found in this date range
+          <div className="mt-2 p-2 bg-sky-50 border border-sky-200 rounded text-xs">
+            <p className="text-sky-900">
+              <strong>{recordCount}</strong> record{recordCount !== 1 ? "s" : ""} found
             </p>
           </div>
         )}
 
         {/* Quick Date Presets */}
-        <div className="mt-4 flex flex-wrap gap-2">
+        <div className="mt-2 flex flex-wrap gap-1">
           <button
             onClick={() => {
               const today = new Date();
               setStartDate(today.toISOString().split("T")[0]);
               setEndDate(today.toISOString().split("T")[0]);
             }}
-            className="px-3 py-1.5 text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors"
+            className="px-2.5 py-1 text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 rounded transition-colors"
           >
             Today
           </button>
@@ -322,9 +317,9 @@ export default function ReportsPage() {
               setStartDate(lastWeek.toISOString().split("T")[0]);
               setEndDate(today.toISOString().split("T")[0]);
             }}
-            className="px-3 py-1.5 text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors"
+            className="px-2.5 py-1 text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 rounded transition-colors"
           >
-            Last 7 Days
+            7d
           </button>
           <button
             onClick={() => {
@@ -334,9 +329,9 @@ export default function ReportsPage() {
               setStartDate(lastMonth.toISOString().split("T")[0]);
               setEndDate(today.toISOString().split("T")[0]);
             }}
-            className="px-3 py-1.5 text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors"
+            className="px-2.5 py-1 text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 rounded transition-colors"
           >
-            Last 30 Days
+            30d
           </button>
           <button
             onClick={() => {
@@ -357,70 +352,48 @@ export default function ReportsPage() {
       </div>
 
       {/* Export Buttons */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Excel Export */}
-        <div className="surface-card p-6">
-          <div className="flex items-center mb-4">
-            <div className="bg-green-100 p-3 rounded-lg mr-4">
-              <FileText className="w-6 h-6 text-green-600" />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 mb-2">
+        <div className="surface-card p-3">
+          <div className="flex items-center mb-1.5">
+            <div className="bg-green-100 p-1.5 rounded mr-2">
+              <Download className="w-3.5 h-3.5 text-green-600" />
             </div>
-            <div>
-              <h3 className="text-lg font-semibold text-slate-900">
-                Excel Report
-              </h3>
-              <p className="text-sm text-slate-600">Download as .xlsx file</p>
-            </div>
+            <h3 className="text-sm font-semibold text-slate-900">Excel</h3>
           </div>
-          <ul className="mb-4 space-y-1 text-sm text-slate-600">
-            <li>✓ Spreadsheet format</li>
-            <li>✓ Easy data manipulation</li>
-            <li>✓ Compatible with Excel, Google Sheets</li>
-          </ul>
           <button
             onClick={exportToExcel}
             disabled={loading || recordCount === 0}
-            className="w-full bg-green-600 hover:bg-green-700 disabled:bg-green-400 disabled:cursor-not-allowed text-white font-semibold py-3 px-4 rounded-lg transition-colors flex items-center justify-center"
+            className="w-full bg-green-600 hover:bg-green-700 disabled:bg-green-400 disabled:cursor-not-allowed text-white font-semibold py-1.5 px-3 rounded text-xs transition-colors flex items-center justify-center gap-1"
           >
             {loading ? (
-              <Loader2 className="w-5 h-5 animate-spin" />
+              <Loader2 className="w-3 h-3 animate-spin" />
             ) : (
               <>
-                <Download className="w-5 h-5 mr-2" />
-                Export to Excel
+                <Download className="w-3 h-3" />
+                Export
               </>
             )}
           </button>
         </div>
 
-        {/* PDF Export */}
-        <div className="surface-card p-6">
-          <div className="flex items-center mb-4">
-            <div className="bg-red-100 p-3 rounded-lg mr-4">
-              <FileText className="w-6 h-6 text-red-600" />
+        <div className="surface-card p-3">
+          <div className="flex items-center mb-1.5">
+            <div className="bg-red-100 p-1.5 rounded mr-2">
+              <Download className="w-3.5 h-3.5 text-red-600" />
             </div>
-            <div>
-              <h3 className="text-lg font-semibold text-slate-900">
-                PDF Report
-              </h3>
-              <p className="text-sm text-slate-600">Download as .pdf file</p>
-            </div>
+            <h3 className="text-sm font-semibold text-slate-900">PDF</h3>
           </div>
-          <ul className="mb-4 space-y-1 text-sm text-slate-600">
-            <li>✓ Professional printable format</li>
-            <li>✓ Formatted tables and headers</li>
-            <li>✓ Universal compatibility</li>
-          </ul>
           <button
             onClick={exportToPDF}
             disabled={loading || recordCount === 0}
-            className="w-full bg-red-600 hover:bg-red-700 disabled:bg-red-400 disabled:cursor-not-allowed text-white font-semibold py-3 px-4 rounded-lg transition-colors flex items-center justify-center"
+            className="w-full bg-red-600 hover:bg-red-700 disabled:bg-red-400 disabled:cursor-not-allowed text-white font-semibold py-1.5 px-3 rounded text-xs transition-colors flex items-center justify-center gap-1"
           >
             {loading ? (
-              <Loader2 className="w-5 h-5 animate-spin" />
+              <Loader2 className="w-3 h-3 animate-spin" />
             ) : (
               <>
-                <Download className="w-5 h-5 mr-2" />
-                Export to PDF
+                <Download className="w-3 h-3" />
+                Export
               </>
             )}
           </button>
@@ -428,32 +401,11 @@ export default function ReportsPage() {
       </div>
 
       {/* Info Box */}
-      <div className="mt-8 surface-muted p-6">
-        <h3 className="mb-3 font-semibold text-sky-900 flex items-center">
-          <FileText className="w-5 h-5 mr-2" />
-          Report Features
-        </h3>
-        <ul className="space-y-2 text-sm text-sky-800">
-          <li>
-            • <strong>Date Filtering:</strong> Select custom date range or use
-            quick presets
-          </li>
-          <li>
-            • <strong>Excel Format:</strong> Includes roll number, name, date,
-            time, confidence, and status
-          </li>
-          <li>
-            • <strong>PDF Format:</strong> Professional layout with headers,
-            formatted tables, and page numbers
-          </li>
-          <li>
-            • <strong>Real-time Preview:</strong> See how many records will be
-            exported before downloading
-          </li>
-          <li>
-            • <strong>Sorted Data:</strong> Records sorted by date and time
-            (newest first)
-          </li>
+      <div className="surface-muted p-2">
+        <h3 className="mb-1 font-semibold text-xs text-sky-900">Features</h3>
+        <ul className="space-y-0.5 text-xs text-sky-800">
+          <li>• Date range filtering and quick presets</li>
+          <li>• Excel (.xlsx) and PDF (.pdf) export formats</li>
         </ul>
       </div>
     </div>

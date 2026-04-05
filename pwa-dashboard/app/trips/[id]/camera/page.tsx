@@ -307,44 +307,62 @@ export default function TripCameraPage() {
   const displayStats = selectedSession ? selectedSession.stats : stats;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        {/* Header */}
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50/30">
+      <div className="max-w-7xl mx-auto px-4 py-6">
+        {/* Back Button & Trip Info */}
         <div className="mb-6">
           <Link
             href={`/trips/${tripId}`}
-            className="inline-flex items-center gap-2 text-slate-300 hover:text-white mb-4"
+            className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-700 font-medium mb-3 transition-colors"
           >
             <ArrowLeft className="h-4 w-4" />
-            Back to Dashboard
+            Back to Trip
           </Link>
 
           {trip && (
             <div>
-              <h1 className="text-3xl font-bold text-white mb-2">
-                {trip.name} - Camera{" "}
-                {selectedSession && `(${selectedSession.name})`}
-              </h1>
-              <div className="flex items-center gap-4 text-slate-300">
-                <span>
-                  Progress: {displayStats.checked_in}/{displayStats.total} (
-                  {displayStats.percentage.toFixed(1)}%)
+              <div className="flex items-start justify-between gap-4 mb-3">
+                <div>
+                  <h1 className="text-3xl font-bold text-slate-900 mb-1">
+                    {trip.name}
+                  </h1>
+                  <p className="text-slate-600">
+                    {selectedSession ? `Session: ${selectedSession.name}` : "Trip Attendance"}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <div className="text-sm font-semibold text-slate-700">Progress</div>
+                  <div className="text-2xl font-bold text-blue-600">
+                    {displayStats.checked_in}/{displayStats.total}
+                  </div>
+                </div>
+              </div>
+
+              {/* Progress Bar */}
+              <div className="flex items-center gap-4">
+                <div className="flex-1 h-2 bg-slate-200 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-blue-500 to-blue-600 transition-all duration-300"
+                    style={{ width: `${displayStats.percentage}%` }}
+                  />
+                </div>
+                <span className="text-sm font-semibold text-slate-600 whitespace-nowrap">
+                  {displayStats.percentage.toFixed(0)}%
                 </span>
-                <span className="w-px h-4 bg-slate-600" />
-                <span className="text-red-400 font-semibold">
-                  {displayStats.missing} Missing
-                </span>
+                {displayStats.missing > 0 && (
+                  <span className="text-sm font-semibold text-red-600">
+                    {displayStats.missing} missing
+                  </span>
+                )}
               </div>
             </div>
           )}
         </div>
 
         {/* Session Selector */}
-        {sessions.length > 0 && (
-          <div className="mb-6 bg-slate-800 rounded-xl border border-slate-700 p-4">
-            <label className="text-white font-semibold mb-3 block">
-              Select Session:
-            </label>
+        {sessions.length > 1 && (
+          <div className="mb-6 p-4 sm:p-5 bg-white border border-slate-200 rounded-lg">
+            <h3 className="text-sm font-bold text-slate-900 mb-3">Select Session:</h3>
             <div className="flex gap-2 flex-wrap">
               {sessions.map((session) => (
                 <button
@@ -352,12 +370,12 @@ export default function TripCameraPage() {
                   onClick={() => setSelectedSession(session)}
                   className={`px-4 py-2 rounded-lg font-medium text-sm transition-all ${
                     selectedSession?.id === session.id
-                      ? "bg-blue-600 text-white shadow-lg"
-                      : "bg-slate-700 text-slate-300 hover:bg-slate-600"
+                      ? "bg-blue-600 text-white shadow-md"
+                      : "bg-slate-100 text-slate-700 hover:bg-slate-200"
                   }`}
                 >
                   {session.name}
-                  <span className="ml-2 text-xs opacity-75">
+                  <span className="ml-2 text-xs font-normal opacity-75">
                     ({session.stats.checked_in}/{session.stats.total})
                   </span>
                 </button>
@@ -367,10 +385,11 @@ export default function TripCameraPage() {
         )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Camera View */}
+          {/* Camera Feed Section */}
           <div className="lg:col-span-2">
-            <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden shadow-2xl">
-              <div className="relative aspect-video bg-black">
+            <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
+              {/* Camera Container */}
+              <div className="relative bg-slate-950 aspect-video">
                 <video
                   ref={videoRef}
                   autoPlay
@@ -379,52 +398,156 @@ export default function TripCameraPage() {
                 />
                 <canvas ref={canvasRef} className="hidden" />
 
-                {/* Overlay */}
-                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-6">
-                  <button
-                    onClick={capturePhoto}
-                    className="w-full bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-xl font-bold text-lg shadow-lg shadow-blue-600/50 transition-all flex items-center justify-center gap-3"
-                  >
-                    <Camera className="h-6 w-6" />
-                    Capture & Check In
-                  </button>
+                {/* Focus Rectangle */}
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <div className="border-2 border-blue-400/30 w-56 h-72 rounded-lg" />
+                </div>
 
-                  {(pendingCount > 0 || processingCount > 0) && (
-                    <div className="mt-3 text-center text-sm text-slate-300">
-                      {processingCount > 0 && (
-                        <span>Processing {processingCount}...</span>
-                      )}
-                      {pendingCount > 0 && (
-                        <span> {pendingCount} in queue</span>
-                      )}
+                {/* Overlay Info */}
+                <div className="absolute top-4 right-4 bg-black/70 backdrop-blur text-white px-3 py-2 rounded-lg text-sm font-medium">
+                  {pendingCount > 0 || processingCount > 0 ? (
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse" />
+                      {processingCount > 0 && <span>Processing {processingCount}</span>}
+                      {pendingCount > 0 && processingCount > 0 && <span>•</span>}
+                      {pendingCount > 0 && <span>{pendingCount} queued</span>}
                     </div>
+                  ) : (
+                    <span className="flex items-center gap-2">
+                      <div className="w-2 h-2 bg-green-400 rounded-full" />
+                      Ready
+                    </span>
                   )}
                 </div>
+              </div>
+
+              {/* Capture Button Below Video */}
+              <div className="bg-gradient-to-br from-slate-50 to-white p-5 border-t border-slate-200">
+                <button
+                  onClick={capturePhoto}
+                  className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white px-8 py-4 rounded-lg font-bold text-lg shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-3"
+                >
+                  <Camera className="h-6 w-6" />
+                  Capture & Check In
+                </button>
+
+                {(pendingCount > 0 || processingCount > 0) && (
+                  <div className="mt-3 text-center text-sm text-slate-600">
+                    <span className="inline-flex items-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+                      {processingCount > 0 && <span>Processing {processingCount}</span>}
+                      {pendingCount > 0 && processingCount === 0 && <span>{pendingCount} in queue</span>}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
 
             {/* Instructions */}
-            <div className="mt-4 bg-slate-800 border border-slate-700 rounded-xl p-4">
-              <h3 className="font-semibold text-white mb-2">
-                Quick Instructions:
-              </h3>
-              <ul className="text-sm text-slate-300 space-y-1">
-                <li>• Look directly at the camera</li>
-                <li>• Ensure good lighting on your face</li>
-                <li>• Click "Capture" when ready</li>
-                <li>• System will auto-recognize and check you in</li>
+            <div className="mt-6 p-4 sm:p-5 bg-blue-50 border border-blue-200 rounded-lg">
+              <h4 className="font-bold text-blue-900 mb-3 flex items-center gap-2">
+                <span className="inline-flex w-5 h-5 items-center justify-center rounded-full bg-blue-600 text-white text-xs font-bold">i</span>
+                Camera Instructions
+              </h4>
+              <ul className="space-y-2 text-sm text-blue-800">
+                <li className="flex items-start gap-2">
+                  <span className="text-blue-600 font-bold">•</span>
+                  <span>Position your face within the frame</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-blue-600 font-bold">•</span>
+                  <span>Ensure good lighting on your face</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-blue-600 font-bold">•</span>
+                  <span>Click capture when ready - recognition is automatic</span>
+                </li>
               </ul>
             </div>
           </div>
 
-          {/* Queue Status */}
-          <div>
-            <div className="bg-slate-800 rounded-xl border border-slate-700 p-6 shadow-xl">
-              <h2 className="text-xl font-bold text-white mb-4">
-                Recent Activity
-              </h2>
+          {/* Activity Log */}
+          <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden flex flex-col">
+            <div className="p-5 border-b border-slate-200">
+              <h3 className="text-lg font-bold text-slate-900">Recent Activity</h3>
+            </div>
 
-              <div className="space-y-3">
+            <div className="overflow-y-auto flex-1">
+              {uploadQueue.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-96 text-center p-4">
+                  <Camera className="h-12 w-12 text-slate-300 mb-3" />
+                  <p className="text-slate-500 text-sm">No captures yet</p>
+                  <p className="text-slate-400 text-xs mt-1">Captures will appear here</p>
+                </div>
+              ) : (
+                <div className="space-y-2 p-4">
+                  {uploadQueue.slice().reverse().map((item) => (
+                    <div
+                      key={item.id}
+                      className={`p-4 rounded-lg border-2 transition-all ${
+                        item.status === "success"
+                          ? "bg-emerald-50 border-emerald-200"
+                          : item.status === "error"
+                            ? "bg-red-50 border-red-200"
+                            : item.status === "processing"
+                              ? "bg-blue-50 border-blue-200"
+                              : "bg-yellow-50 border-yellow-200"
+                      }`}
+                    >
+                      <div className="flex items-start gap-3">
+                        {item.status === "success" && (
+                          <CheckCircle2 className="h-5 w-5 text-emerald-600 flex-shrink-0 mt-0.5" />
+                        )}
+                        {item.status === "error" && (
+                          <XCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+                        )}
+                        {item.status === "processing" && (
+                          <Loader2 className="h-5 w-5 text-blue-600 animate-spin flex-shrink-0 mt-0.5" />
+                        )}
+                        {item.status === "pending" && (
+                          <AlertCircle className="h-5 w-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+                        )}
+
+                        <div className="flex-1 min-w-0">
+                          {item.status === "success" && item.result && (
+                            <div>
+                              <p className="font-bold text-emerald-900 text-sm">
+                                ✓ {item.result.name}
+                              </p>
+                              <p className="text-xs text-emerald-700 mt-0.5">
+                                {item.result.roll_number}
+                              </p>
+                              <p className="text-xs text-emerald-700 mt-1">
+                                {item.result.confidence}% match
+                              </p>
+                            </div>
+                          )}
+                          {item.status === "error" && (
+                            <div>
+                              <p className="font-bold text-red-900 text-sm">Failed</p>
+                              <p className="text-xs text-red-700 mt-1">
+                                {item.error || "Recognition failed"}
+                              </p>
+                            </div>
+                          )}
+                          {item.status === "processing" && (
+                            <p className="font-semibold text-blue-900 text-sm">Processing...</p>
+                          )}
+                          {item.status === "pending" && (
+                            <p className="font-semibold text-yellow-900 text-sm">Queued...</p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
                 {uploadQueue.length === 0 ? (
                   <div className="text-center py-8 text-slate-400">
                     <Camera className="h-12 w-12 mx-auto mb-2 text-slate-600" />

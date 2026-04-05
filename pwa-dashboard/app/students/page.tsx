@@ -140,40 +140,40 @@ export default function StudentsPage() {
         </div>
       )}
 
-      <div className="mb-6 sm:mb-8 flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
+      <div className="mb-3 flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2">
         <div className="flex-1">
-          <h1 className="section-title text-2xl sm:text-3xl flex items-center gap-2 sm:gap-3">
-            <Users className="w-6 h-6 sm:w-8 sm:h-8 text-sky-700" />
+          <h1 className="section-title text-xl sm:text-2xl flex items-center gap-1.5 sm:gap-2">
+            <Users className="w-5 h-5 sm:w-6 sm:h-6 text-sky-700" />
             Students
           </h1>
-          <p className="section-subtitle mt-2 text-xs sm:text-sm">
-            {students.length} students enrolled
+          <p className="section-subtitle mt-0.5 text-xs">
+            {students.length} enrolled
           </p>
         </div>
 
         <button
           onClick={() => setShowAddForm(true)}
-          className="flex items-center justify-center gap-2 px-4 py-2.5 sm:py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors shadow-lg hover:shadow-xl font-medium text-sm w-full sm:w-auto"
+          className="flex items-center justify-center gap-1.5 px-3 py-1.5 sm:py-1 bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors shadow font-medium text-xs w-full sm:w-auto"
         >
-          <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
-          Add Student
+          <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+          Add
         </button>
       </div>
 
-      <div className="mb-6">
+      <div className="mb-3">
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4 sm:w-5 sm:h-5" />
+          <Search className="absolute left-2.5 top-1/2 transform -translate-y-1/2 text-slate-400 w-3.5 h-3.5 sm:w-4 sm:h-4" />
           <input
             type="text"
-            placeholder="Search by name or roll..."
+            placeholder="Search..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-lg sm:rounded-xl border border-slate-300/70 bg-slate-50/85 py-2.5 sm:py-3 pr-4 pl-10 text-slate-900 shadow-sm outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-200 text-sm"
+            className="w-full rounded border border-slate-300/70 bg-slate-50/85 py-1.5 sm:py-2 pr-3 pl-8 text-slate-900 shadow-sm outline-none transition focus:border-sky-500 focus:ring-1 focus:ring-sky-200 text-xs placeholder:text-slate-400"
           />
         </div>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2 sm:gap-3">
         {filteredStudents.map((student) => (
           <div
             key={student.id}
@@ -198,72 +198,56 @@ export default function StudentsPage() {
             </div>
 
             {/* Photo Section */}
-            <div className="w-full h-32 sm:h-40 bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-700 dark:to-slate-800 flex items-center justify-center overflow-hidden relative">
+            <div className="w-full h-24 sm:h-28 bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-700 dark:to-slate-800 flex items-center justify-center overflow-hidden relative">
               {student.photo_url ? (
                 <img
                   src={student.photo_url}
                   alt={student.name}
                   className="w-full h-full object-cover"
                   onError={(e) => {
-                    // Fallback to icon if photo fails to load
                     const target = e.target as HTMLImageElement;
                     target.style.display = "none";
                   }}
                 />
               ) : (
-                <Users className="w-12 h-12 sm:w-14 sm:h-14 text-slate-400" />
+                <Users className="w-10 h-10 sm:w-12 sm:h-12 text-slate-400" />
               )}
             </div>
 
             {/* Info Section */}
-            <div className="p-3 sm:p-4">
-              <div className="flex items-start justify-between mb-2">
-                <div>
-                  <h3 className="text-sm sm:text-base font-semibold text-slate-900 mb-0.5">
+            <div className="p-2 sm:p-3">
+              <div className="flex items-start justify-between mb-1">
+                <div className="min-w-0">
+                  <h3 className="text-xs sm:text-sm font-semibold text-slate-900 truncate">
                     {student.name}
                   </h3>
-                  <p className="text-xs text-slate-600 mb-2">
-                    Roll: {student.roll_number}
+                  <p className="text-xs text-slate-600 leading-tight">
+                    {student.roll_number}
                   </p>
                 </div>
-                <div>
+                <div className="flex-shrink-0">
                   {student.is_active ? (
-                    <CheckCircle className="w-4 h-4 text-green-500" />
+                    <CheckCircle className="w-3.5 h-3.5 text-green-500" />
                   ) : (
-                    <XCircle className="w-4 h-4 text-red-500" />
+                    <XCircle className="w-3.5 h-3.5 text-red-500" />
                   )}
                 </div>
               </div>
 
               {(student.class || student.section) && (
-                <p className="text-xs text-slate-600 mb-2">
+                <p className="text-xs text-slate-600 leading-tight">
                   {student.class} {student.section && `- ${student.section}`}
                 </p>
               )}
-
-              <div className="space-y-1 text-xs">
-                {student.email && (
-                  <div className="flex items-center text-slate-600 gap-1.5">
-                    <Mail className="w-3 h-3 flex-shrink-0" />
-                    <span className="truncate text-xs">{student.email}</span>
-                  </div>
-                )}
-                {student.phone && (
-                  <div className="flex items-center text-slate-600 gap-1.5">
-                    <Phone className="w-3 h-3 flex-shrink-0" />
-                    <span className="text-xs">{student.phone}</span>
-                  </div>
-                )}
-              </div>
             </div>
           </div>
         ))}
       </div>
 
       {filteredStudents.length === 0 && (
-        <div className="surface-muted text-center py-8 sm:py-12">
-          <Users className="w-10 h-10 sm:w-12 sm:h-12 text-gray-400 mx-auto mb-3 sm:mb-4" />
-          <p className="text-sm sm:text-base text-gray-500">
+        <div className="surface-muted text-center py-6">
+          <Users className="w-8 h-8 text-gray-400 mx-auto mb-1.5" />
+          <p className="text-xs text-gray-500">
             No students found
           </p>
         </div>

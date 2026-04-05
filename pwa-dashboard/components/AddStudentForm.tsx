@@ -178,17 +178,17 @@ export default function AddStudentForm({
       />
 
       {/* Dialog */}
-      <div className="flex min-h-full items-center justify-center p-4">
-        <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+      <div className="flex min-h-full items-center justify-center p-3 sm:p-4">
+        <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           {/* Header */}
-          <div className="sticky top-0 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4 flex justify-between items-center">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-              Add New Student
+          <div className="sticky top-0 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 sm:px-6 py-3 sm:py-4 flex justify-between items-center">
+            <h2 className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white">
+              Add Student
             </h2>
             <button
               onClick={handleClose}
               disabled={isSubmitting}
-              className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 disabled:opacity-50"
+              className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 disabled:opacity-50 flex-shrink-0\"
             >
               <svg
                 className="w-6 h-6"
@@ -223,7 +223,7 @@ export default function AddStudentForm({
                 Basic Information
               </h3>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Roll Number <span className="text-red-500">*</span>
@@ -319,7 +319,7 @@ export default function AddStudentForm({
                   Face Photos <span className="text-red-500">*</span>
                 </h3>
                 <span className="text-xs text-gray-500 dark:text-gray-400">
-                  {photos.length}/10 photos (min: 1)
+                  {photos.length}/10
                 </span>
               </div>
 
@@ -370,13 +370,13 @@ export default function AddStudentForm({
 
               {/* Photo Previews */}
               {photoPreviews.length > 0 && (
-                <div className="grid grid-cols-3 md:grid-cols-5 gap-4">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 sm:gap-4">
                   {photoPreviews.map((preview, index) => (
                     <div key={index} className="relative group">
                       <img
                         src={preview}
                         alt={`Preview ${index + 1}`}
-                        className="w-full h-24 object-cover rounded-lg border-2 border-gray-200 dark:border-gray-700"
+                        className="w-full h-20 sm:h-24 object-cover rounded-lg border-2 border-gray-200 dark:border-gray-700"
                       />
                       <button
                         type="button"

@@ -161,63 +161,59 @@ export default function SessionsList({
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold text-gray-900">
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-base font-semibold text-gray-900">
           Sessions ({sessions.length})
         </h3>
         <button
           onClick={onCreateSession}
-          className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 transition-colors"
+          className="flex items-center gap-1 rounded transition-colors bg-blue-600 px-3 py-1.5 text-white text-sm hover:bg-blue-700"
         >
-          <Plus className="h-4 w-4" />
-          New Session
+          <Plus className="h-3 w-3" />
+          New
         </button>
       </div>
 
       {error && (
-        <div className="rounded-lg bg-red-50 border border-red-200 p-4 text-red-800">
+        <div className="rounded bg-red-50 border border-red-200 p-2 text-red-800 text-sm">
           {error}
         </div>
       )}
 
       {sessions.length === 0 ? (
-        <div className="rounded-lg border-2 border-dashed border-gray-300 p-8 text-center">
-          <Calendar className="mx-auto h-12 w-12 text-gray-400" />
-          <p className="mt-2 text-gray-600">No sessions yet</p>
-          <p className="text-sm text-gray-500">
-            Create a session to start taking attendance
+        <div className="rounded border border-dashed border-gray-300 p-4 text-center">
+          <Calendar className="mx-auto h-8 w-8 text-gray-400" />
+          <p className="mt-1 text-gray-600 text-sm">No sessions yet</p>
+          <p className="text-xs text-gray-500">
+            Create a session to start attendance
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
           {sessions.map((session) => {
             const StatusIcon = statusIcons[session.status];
 
             return (
               <div
                 key={session.id}
-                className="rounded-lg border border-gray-200 bg-white p-4 hover:shadow-lg transition-shadow cursor-pointer"
+                className="rounded border border-gray-200 bg-white p-3 hover:shadow transition-shadow cursor-pointer"
                 onClick={() => onSelectSession?.(session)}
               >
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <h4 className="font-semibold text-gray-900">
+                <div className="flex items-start justify-between gap-1">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <h4 className="font-semibold text-gray-900 text-sm truncate">
                         {session.name}
                       </h4>
                       <span
-                        className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm font-medium ${
-                          statusColors[session.status]
-                        }`}
+                        className={`inline-flex items-center gap-0.5 rounded px-2 py-0.5 text-xs font-medium flex-shrink-0 ${statusColors[session.status]}`}
                       >
-                        <StatusIcon className="h-3 w-3" />
-                        {session.status.charAt(0).toUpperCase() +
-                          session.status.slice(1)}
+                        <StatusIcon className="h-2.5 w-2.5" />
                       </span>
                     </div>
                     {session.description && (
-                      <p className="mt-1 text-sm text-gray-600">
+                      <p className="mt-0.5 text-xs text-gray-600 line-clamp-1">
                         {session.description}
                       </p>
                     )}
@@ -228,26 +224,25 @@ export default function SessionsList({
                       handleDeleteSession(session.id);
                     }}
                     disabled={deletingId === session.id}
-                    className="ml-2 text-gray-400 hover:text-red-600 transition-colors disabled:opacity-50"
+                    className="text-gray-400 hover:text-red-600 transition-colors disabled:opacity-50 flex-shrink-0"
                   >
                     {deletingId === session.id ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
                     ) : (
-                      <Trash2 className="h-4 w-4" />
+                      <Trash2 className="h-3.5 w-3.5" />
                     )}
                   </button>
                 </div>
 
-                <div className="mt-4 space-y-2 text-sm text-gray-600">
-                  <div className="flex items-center gap-2">
-                    <Calendar className="h-4 w-4" />
-                    {new Date(session.session_date).toLocaleDateString()}
+                <div className="mt-2 space-y-0.5 text-xs text-gray-600">
+                  <div className="flex items-center gap-1.5">
+                    <Calendar className="h-3 w-3 flex-shrink-0" />
+                    <span className="truncate">{new Date(session.session_date).toLocaleDateString()}</span>
                   </div>
                   {session.start_time && (
-                    <div className="flex items-center gap-2">
-                      <Clock className="h-4 w-4" />
-                      {session.start_time}
-                      {session.end_time && ` - ${session.end_time}`}
+                    <div className="flex items-center gap-1.5">
+                      <Clock className="h-3 w-3 flex-shrink-0" />
+                      <span>{session.start_time}{session.end_time && ` - ${session.end_time}`}</span>
                     </div>
                   )}
                   <div className="flex items-center gap-2">

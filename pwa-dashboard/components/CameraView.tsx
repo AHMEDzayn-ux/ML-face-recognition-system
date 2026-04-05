@@ -235,20 +235,27 @@ export default function CameraView({ onResult }: CameraViewProps) {
 
   if (!isMounted) {
     return (
-      <div className="surface-muted p-6 text-center">
-        <p className="text-gray-600">Loading camera...</p>
+      <div className="surface-muted p-8 text-center">
+        <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-slate-200 mb-3">
+          <Loader2 className="w-6 h-6 text-slate-500 animate-spin" />
+        </div>
+        <p className="text-slate-600 font-medium">Initializing camera...</p>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="rounded-lg border border-red-200 bg-red-50/80 p-6 text-center">
-        <p className="text-red-800">{error}</p>
+      <div className="rounded-lg border-2 border-red-200 bg-red-50 p-8 text-center">
+        <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-red-100 mb-3">
+          <XCircle className="w-6 h-6 text-red-600" />
+        </div>
+        <p className="text-red-900 font-semibold mb-4">{error}</p>
         <button
           onClick={startCamera}
-          className="mt-4 bg-red-600 text-white px-4 py-2 rounded-lg"
+          className="bg-red-600 hover:bg-red-700 text-white px-6 py-2.5 rounded-lg font-medium transition-colors inline-flex items-center gap-2"
         >
+          <Camera className="w-4 h-4" />
           Try Again
         </button>
       </div>
@@ -257,93 +264,102 @@ export default function CameraView({ onResult }: CameraViewProps) {
 
   return (
     <div className="space-y-4">
-      <div className="relative overflow-hidden rounded-lg sm:rounded-xl border border-slate-300/50 bg-slate-900">
-        <video ref={videoRef} autoPlay playsInline muted className="w-full h-auto block" />
+      {/* Video Feed */}
+      <div className="relative overflow-hidden rounded-lg border-2 border-slate-200 bg-slate-950 aspect-video">
+        <video 
+          ref={videoRef} 
+          autoPlay 
+          playsInline 
+          muted 
+          className="w-full h-full object-cover" 
+        />
         <canvas ref={canvasRef} className="hidden" />
 
-        {/* Queue status overlay */}
+        {/* Queue Status Overlay */}
         {uploadQueue.length > 0 && (
-          <div className="absolute top-3 sm:top-4 right-3 sm:right-4 bg-black/70 backdrop-blur-sm text-white px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium">
-            Queue: {uploadQueue.filter((i) => i.status === "pending").length}{" "}
-            pending |{" "}
-            {uploadQueue.filter((i) => i.status === "processing").length}{" "}
-            processing
+          <div className="absolute top-4 right-4 bg-black/75 backdrop-blur-sm text-white px-3 py-2 rounded-lg text-xs font-medium border border-white/10">
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse" />
+              Queue: {uploadQueue.filter((i) => i.status === "pending").length} pending
+            </div>
           </div>
         )}
+
+        {/* Instructions Overlay */}
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <div className="border-2 border-blue-400 w-64 h-80 rounded-lg opacity-50" />
+        </div>
       </div>
 
-      {/* Capture button - NEVER DISABLED! */}
+      {/* Main Capture Button */}
       <button
         onClick={capture}
-        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 sm:py-4 px-4 sm:px-6 rounded-lg sm:rounded-lg transition-colors flex items-center justify-center text-sm sm:text-base"
+        className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-bold py-4 px-6 rounded-lg shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-3 text-lg"
       >
-        <Camera className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
+        <Camera className="w-5 h-5" />
         Capture & Mark Attendance
         {captureCount > 0 && (
-          <span className="ml-2 bg-white/20 px-2 py-0.5 sm:py-1 rounded text-xs sm:text-sm">
+          <span className="ml-2 bg-white/20 px-3 py-1 rounded-full text-sm font-semibold">
             {captureCount}
           </span>
         )}
       </button>
 
-      {/* Queue status list */}
+      {/* Queue Status List */}
       {uploadQueue.length > 0 && (
-        <div className="space-y-2 max-h-48 overflow-y-auto">
-          {uploadQueue.map((item) => (
+        <div className="space-y-2 max-h-56 overflow-y-auto p-4 bg-slate-50 rounded-lg border border-slate-200">
+          <h4 className="font-semibold text-slate-900 text-sm mb-3">Processing Queue</h4>
+          {uploadQueue.slice().reverse().map((item) => (
             <div
               key={item.id}
-              className={`flex items-center gap-3 p-3 rounded-lg border ${
+              className={`flex items-center gap-3 p-3 rounded-lg border-2 transition-all ${
                 item.status === "completed"
-                  ? "bg-green-50 border-green-200"
+                  ? "bg-emerald-50 border-emerald-200"
                   : item.status === "failed"
                     ? "bg-red-50 border-red-200"
                     : item.status === "processing"
                       ? "bg-blue-50 border-blue-200"
-                      : "bg-gray-50 border-gray-200"
+                      : "bg-yellow-50 border-yellow-200"
               }`}
             >
               {item.status === "pending" && (
-                <Clock className="w-5 h-5 text-gray-500" />
+                <Clock className="w-5 h-5 text-yellow-600" />
               )}
               {item.status === "processing" && (
-                <Loader2 className="w-5 h-5 text-blue-500 animate-spin" />
+                <Loader2 className="w-5 h-5 text-blue-600 animate-spin" />
               )}
               {item.status === "completed" && (
-                <CheckCircle2 className="w-5 h-5 text-green-500" />
+                <CheckCircle2 className="w-5 h-5 text-emerald-600" />
               )}
               {item.status === "failed" && (
-                <XCircle className="w-5 h-5 text-red-500" />
+                <XCircle className="w-5 h-5 text-red-600" />
               )}
 
-              <div className="flex-1 text-sm">
-                {item.status === "pending" && (
-                  <span className="text-gray-700">Waiting in queue...</span>
-                )}
-                {item.status === "processing" && (
-                  <span className="text-blue-700">Processing...</span>
-                )}
-                {item.status === "completed" && item.result?.success && (
-                  <span className="text-green-700 font-medium">
-                    {item.result.name}{" "}
-                    {item.result.confidence &&
-                      `(${Math.round(item.result.confidence * 100)}%)`}
-                  </span>
-                )}
-                {item.status === "failed" && (
-                  <span className="text-red-700">
-                    {item.result?.message || "Failed"}
-                  </span>
-                )}
-                {item.status === "completed" && !item.result?.success && (
-                  <span className="text-red-700">
-                    {item.result?.message || "Not recognized"}
-                  </span>
-                )}
+              <div className="flex-1">
+                <p className={`text-sm font-medium ${
+                  item.status === "completed"
+                    ? "text-emerald-900"
+                    : item.status === "failed"
+                      ? "text-red-900"
+                      : item.status === "processing"
+                        ? "text-blue-900"
+                        : "text-yellow-900"
+                }`}>
+                  {item.status === "pending" && "Waiting in queue..."}
+                  {item.status === "processing" && "Processing recognition..."}
+                  {item.status === "completed" && item.result?.success && (
+                    <span>✓ {item.result.name} ({Math.round((item.result.confidence || 0) * 100)}%)</span>
+                  )}
+                  {item.status === "failed" && (
+                    <span>Failed: {item.result?.message || "Unknown error"}</span>
+                  )}
+                  {item.status === "completed" && !item.result?.success && (
+                    <span>Failed: {item.result?.message || "Not recognized"}</span>
+                  )}
+                </p>
               </div>
 
-              <span className="text-xs text-gray-500">
-                #{item.id.toString().slice(-4)}
-              </span>
+              <span className="text-xs text-slate-500 font-mono">#{item.id.toString().slice(-4)}</span>
             </div>
           ))}
         </div>

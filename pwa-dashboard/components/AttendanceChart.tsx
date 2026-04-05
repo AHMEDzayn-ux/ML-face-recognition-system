@@ -81,7 +81,7 @@ export default function AttendanceChart({ data }: AttendanceChartProps) {
   };
 
   return (
-    <div style={{ height: "300px" }}>
+    <div className="h-48 sm:h-64 md:h-80 w-full">
       <Line data={chartData} options={options} />
     </div>
   );

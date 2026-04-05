@@ -50,50 +50,48 @@ export default function SessionDashboard({ tripId }: SessionDashboardProps) {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3">
       {selectedSession ? (
         /* Session Details View */
         <div>
           {/* Back Button */}
           <button
             onClick={() => setSelectedSession(null)}
-            className="flex items-center gap-2 text-blue-600 hover:text-blue-700 font-medium mb-4"
+            className="flex items-center gap-1 text-blue-600 hover:text-blue-700 font-medium text-sm mb-2"
           >
-            <ArrowLeft className="h-4 w-4" />
-            Back to Sessions
+            <ArrowLeft className="h-3.5 w-3.5" />
+            Back
           </button>
 
           {/* Session Header */}
-          <div className="rounded-lg bg-white border border-gray-200 p-6 mb-6">
-            <div className="flex items-start justify-between">
-              <div>
-                <h2 className="text-2xl font-bold text-gray-900">
+          <div className="rounded bg-white border border-gray-200 p-4 mb-3">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                <h2 className="text-lg font-bold text-gray-900">
                   {selectedSession.name}
                 </h2>
                 {selectedSession.description && (
-                  <p className="mt-2 text-gray-600">
+                  <p className="mt-1 text-gray-600 text-sm">
                     {selectedSession.description}
                   </p>
                 )}
-                <div className="mt-4 flex flex-wrap gap-4 text-sm text-gray-600">
+                <div className="mt-2 flex flex-wrap gap-2 text-xs text-gray-600">
                   <div>
-                    📅{" "}
-                    {new Date(
+                    📅 {new Date(
                       selectedSession.session_date,
                     ).toLocaleDateString()}
                   </div>
                   {selectedSession.start_time && (
                     <div>
-                      🕐 {selectedSession.start_time}
-                      {selectedSession.end_time &&
+                      🕐 {selectedSession.start_time}{selectedSession.end_time &&
                         ` - ${selectedSession.end_time}`}
                     </div>
                   )}
-                  <div>👥 {selectedSession.stats?.total} expected</div>
+                  <div>👥 {selectedSession.stats?.total}</div>
                 </div>
               </div>
               <span
-                className={`inline-block rounded-full px-4 py-1 text-sm font-semibold ${
+                className={`inline-block rounded px-2 py-1 text-xs font-semibold flex-shrink-0 ${
                   selectedSession.status === "active"
                     ? "bg-green-100 text-green-800"
                     : selectedSession.status === "completed"

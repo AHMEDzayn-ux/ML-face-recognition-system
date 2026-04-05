@@ -223,24 +223,24 @@ export default function SessionParticipantsList({
   return (
     <div className="space-y-4">
       {/* Stats Bar */}
-      <div className="grid grid-cols-4 gap-4">
-        <div className="rounded-lg bg-white p-4 border border-gray-200">
-          <div className="text-sm text-gray-600">Total</div>
-          <div className="text-2xl font-bold text-gray-900">{stats.total}</div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-4">
+        <div className="rounded-lg bg-white p-2 sm:p-4 border border-gray-200">
+          <div className="text-xs sm:text-sm text-gray-600">Total</div>
+          <div className="text-xl sm:text-2xl font-bold text-gray-900">{stats.total}</div>
         </div>
-        <div className="rounded-lg bg-green-50 p-4 border border-green-200">
-          <div className="text-sm text-green-700">Checked In</div>
-          <div className="text-2xl font-bold text-green-900">
+        <div className="rounded-lg bg-green-50 p-2 sm:p-4 border border-green-200">
+          <div className="text-xs sm:text-sm text-green-700">Checked</div>
+          <div className="text-xl sm:text-2xl font-bold text-green-900">
             {stats.checked_in}
           </div>
         </div>
-        <div className="rounded-lg bg-red-50 p-4 border border-red-200">
-          <div className="text-sm text-red-700">Missing</div>
-          <div className="text-2xl font-bold text-red-900">{stats.missing}</div>
+        <div className="rounded-lg bg-red-50 p-2 sm:p-4 border border-red-200">
+          <div className="text-xs sm:text-sm text-red-700">Missing</div>
+          <div className="text-xl sm:text-2xl font-bold text-red-900">{stats.missing}</div>
         </div>
-        <div className="rounded-lg bg-blue-50 p-4 border border-blue-200">
-          <div className="text-sm text-blue-700">Progress</div>
-          <div className="text-2xl font-bold text-blue-900">
+        <div className="rounded-lg bg-blue-50 p-2 sm:p-4 border border-blue-200">
+          <div className="text-xs sm:text-sm text-blue-700">Progress</div>
+          <div className="text-xl sm:text-2xl font-bold text-blue-900">
             {stats.percentage.toFixed(0)}%
           </div>
         </div>
