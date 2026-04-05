@@ -1,6 +1,7 @@
 """
 Build Known Faces Database
-Creates embeddings database from organized face photos
+Creates embeddings database from organized face photos AND database student photos
+Ensures all students added to trips have embeddings available
 """
 
 import os
@@ -8,10 +9,31 @@ import pickle
 import numpy as np
 from deepface import DeepFace
 from pathlib import Path
+import io
+from urllib.request import urlopen
 
-def build_embeddings_database(known_faces_dir="known_faces", output_file="embeddings.pkl"):
+# Supabase integration
+try:
+    from supabase import create_client, Client
+    from dotenv import load_dotenv
+    env_path = os.path.join(os.path.dirname(__file__), '.env')
+    load_dotenv(env_path)
+    SUPABASE_ENABLED = os.getenv("SUPABASE_URL") and os.getenv("SUPABASE_KEY")
+    if SUPABASE_ENABLED:
+        supabase_client = create_client(
+            os.getenv("SUPABASE_URL"),
+            os.getenv("SUPABASE_KEY")
+        )
+    else:
+        supabase_client = None
+except ImportError:
+    SUPABASE_ENABLED = False
+    supabase_client = None
+    print("⚠️  Supabase not installed. Skipping database photo sync.")
+
+def build_embeddings_database(known_faces_dir="known_faces", output_file="embeddings.pkl", include_db_photos=True):
     """
-    Build embeddings database from known faces directory
+    Build embeddings database from known faces directory AND database student photos
     
     Directory structure:
         known_faces/
@@ -24,6 +46,7 @@ def build_embeddings_database(known_faces_dir="known_faces", output_file="embedd
     Args:
         known_faces_dir: Directory containing person folders
         output_file: Output pickle file for embeddings
+        include_db_photos: If True, also pull photos from Supabase database for all students
     
     Returns:
         Dictionary of embeddings
@@ -103,17 +126,113 @@ def build_embeddings_database(known_faces_dir="known_faces", output_file="embedd
         else:
             print(f"  ⚠ No valid embeddings found for {person_name}")
     
+    # PHASE 2: Add embeddings from database student photos (for students added to trips)
+    if include_db_photos and SUPABASE_ENABLED and supabase_client:
+        print("\n" + "=" * 60)
+        print("PHASE 2: Processing Database Student Photos")
+        print("=" * 60)
+        
+        try:
+            # Get all students from database
+            students_response = supabase_client.table('students').select('*').execute()
+            students = students_response.data if students_response.data else []
+            
+            print(f"\n📊 Found {len(students)} students in database")
+            
+            db_processed = 0
+            db_skipped = 0
+            db_failed = 0
+            
+            for student in students:
+                student_id = student['id']
+                student_name = student['name']
+                photo_url = student.get('photo_url')
+                
+                # Skip if already have embeddings for this student
+                if student_name in embeddings_db:
+                    # print(f"  ⊘ {student_name} - already have embeddings from known_faces/")
+                    db_skipped += 1
+                    continue
+                
+                # Skip if no photo
+                if not photo_url:
+                    # print(f"  ⊘ {student_name} - no photo uploaded")
+                    db_skipped += 1
+                    continue
+                
+                try:
+                    print(f"  📥 {student_name}... ", end="", flush=True)
+                    
+                    # Download and process photo from Supabase
+                    try:
+                        from urllib.request import urlopen
+                        response = urlopen(photo_url)
+                        img_data = response.read()
+                        
+                        # Save temporarily
+                        temp_path = os.path.join("uploads", f"temp_db_{student_id}.jpg")
+                        os.makedirs("uploads", exist_ok=True)
+                        with open(temp_path, 'wb') as f:
+                            f.write(img_data)
+                        
+                        # Extract embedding
+                        embedding_objs = DeepFace.represent(
+                            img_path=temp_path,
+                            model_name="Facenet",
+                            detector_backend="mtcnn",
+                            enforce_detection=False  # More lenient for database photos
+                        )
+                        
+                        if embedding_objs and len(embedding_objs) > 0:
+                            # Add to embeddings database
+                            embedding = embedding_objs[0]["embedding"]
+                            embeddings_db[student_name] = [{
+                                'embedding': embedding,
+                                'image': 'database_photo',
+                                'path': photo_url,
+                                'source': 'database'
+                            }]
+                            print("✅")
+                            db_processed += 1
+                        else:
+                            print("❌ (no face)")
+                            db_failed += 1
+                        
+                        # Clean up
+                        if os.path.exists(temp_path):
+                            os.remove(temp_path)
+                    
+                    except Exception as download_err:
+                        print(f"❌ ({str(download_err)[:40]})")
+                        db_failed += 1
+                    
+                except Exception as e:
+                    print(f"❌ Error processing {student_name}: {str(e)[:50]}")
+                    db_failed += 1
+            
+            print(f"\n  Database photos processed: {db_processed}")
+            if db_skipped > 0:
+                print(f"  Already in embeddings (skipped): {db_skipped}")
+            if db_failed > 0:
+                print(f"  Failed: {db_failed}")
+        
+        except Exception as e:
+            print(f"\n⚠️  Error accessing database for photos: {str(e)}")
+            print("   Continuing with known_faces embeddings only...")
+    
+    
     print("\n" + "=" * 60)
     print("Summary")
     print("=" * 60)
-    print(f"People in database: {len(embeddings_db)}")
+    print(f"Total people in database: {len(embeddings_db)}")
     print(f"Total images processed: {total_processed}")
     print(f"Total images failed: {total_failed}")
     
     # Show database contents
     print("\n📊 Database Contents:")
     for person_name, embeddings in embeddings_db.items():
-        print(f"  • {person_name}: {len(embeddings)} photos")
+        source = embeddings[0].get('source', 'known_faces')
+        print(f"  • {person_name}: {len(embeddings)} embedding(s) [{source}]")
     
     # Save to pickle file
     if embeddings_db:
@@ -162,15 +281,19 @@ if __name__ == "__main__":
     else:
         output_file = "embeddings.pkl"
     
-    # Build the database
+    # Build the database (including database photos by default)
     print("\n🚀 Starting database build...\n")
-    db = build_embeddings_database(known_faces_dir, output_file)
+    print("📌 This will combine photos from:")
+    print("   1. known_faces/ folder (local)")
+    print("   2. Student database (from uploaded photos)\n")
+    
+    db = build_embeddings_database(known_faces_dir, output_file, include_db_photos=True)
     
     if db:
         print("\n✅ Database build complete!")
         print("\nNext steps:")
         print("  1. Test identification with: python identify_face.py <test_image.jpg>")
-        print("  2. Add more photos to known_faces/ and rebuild if needed")
+        print("  2. Trip camera recognition should now work for all students with photos!")
     else:
         print("\n❌ Database build failed!")
         print("\nSetup instructions:")

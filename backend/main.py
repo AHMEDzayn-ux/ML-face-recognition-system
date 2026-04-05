@@ -30,7 +30,8 @@ warnings.filterwarnings('ignore')  # Suppress other warnings
 try:
     from supabase import create_client, Client
     from dotenv import load_dotenv
-    load_dotenv()  # Load .env file
+    env_path = os.path.join(os.path.dirname(__file__), '.env')
+    load_dotenv(env_path)  # Load .env file explicitly
     SUPABASE_ENABLED = os.getenv("SUPABASE_URL") and os.getenv("SUPABASE_KEY")
 except ImportError:
     SUPABASE_ENABLED = False
@@ -42,6 +43,9 @@ sys.path.append(os.path.dirname(__file__))
 
 # Import image enhancement module
 from image_enhancement import preprocess_for_recognition
+
+# Add garbage collection for memory management
+import gc
 
 app = FastAPI(
     title="Face Recognition Attendance API",
@@ -173,6 +177,136 @@ async def startup_event():
     else:
         print("ℹ️  Using local JSON storage only")
     print("="*60 + "\n")
+
+
+def preprocess_image_for_deepface(img_path, max_dimension=1024):
+    """
+    Preprocess image to reduce memory consumption before DeepFace processing.
+    
+    Args:
+        img_path: Path to the image file
+        max_dimension: Maximum width or height (default: 1024)
+    
+    Returns:
+        Path to the preprocessed image (same path, image is overwritten)
+    """
+    try:
+        # Read image
+        img = cv2.imread(img_path)
+        if img is None:
+            raise ValueError(f"Could not read image: {img_path}")
+        
+        # Get dimensions
+        height, width = img.shape[:2]
+        
+        # Calculate if resizing is needed
+        if width > max_dimension or height > max_dimension:
+            # Calculate scaling factor
+            scale = max_dimension / max(width, height)
+            new_width = int(width * scale)
+            new_height = int(height * scale)
+            
+            # Resize with high-quality interpolation
+            img = cv2.resize(img, (new_width, new_height), interpolation=cv2.INTER_AREA)
+            print(f"   📐 Resized image: {width}x{height} → {new_width}x{new_height}")
+        
+        # Apply brightness enhancement if needed
+        img = preprocess_for_recognition(img)
+        
+        # Save preprocessed image
+        cv2.imwrite(img_path, img, [cv2.IMWRITE_JPEG_QUALITY, 95])
+        
+        # Clear image from memory
+        del img
+        gc.collect()
+        
+        return img_path
+        
+    except Exception as e:
+        print(f"❌ Preprocessing error: {str(e)}")
+        raise
+
+
+def safe_deepface_represent(img_path, retries=2, enforce_detection=True):
+    """
+    Safely call DeepFace.represent with memory management and error handling.
+    
+    Args:
+        img_path: Path to the image
+        retries: Number of retry attempts on failure
+        enforce_detection: Whether to enforce face detection (True for uploads, False for identification)
+    
+    Returns:
+        DeepFace representation result
+    
+    Raises:
+        ValueError: If no face detected
+        Exception: If processing fails after retries
+    """
+    last_error = None
+    
+    for attempt in range(retries):
+        try:
+            # Preprocess image to reduce memory usage
+            preprocess_image_for_deepface(img_path)
+            
+            # Call DeepFace
+            result = DeepFace.represent(
+                img_path=img_path,
+                model_name="Facenet",
+                detector_backend="retinaface",
+                enforce_detection=enforce_detection
+            )
+            
+            # Clear memory after successful processing
+            gc.collect()
+            
+            return result
+            
+        except ValueError as e:
+            # No face detected - don't retry
+            raise ValueError("No face detected in image")
+            
+        except Exception as e:
+            last_error = e
+            error_msg = str(e).lower()
+            
+            # Check if it's a memory error
+            if "memory" in error_msg or "oom" in error_msg or "allocat" in error_msg:
+                print(f"   ⚠️  Memory error on attempt {attempt + 1}/{retries}")
+                print(f"   🧹 Clearing memory and retrying...")
+                
+                # Aggressive memory cleanup
+                gc.collect()
+                
+                # Try with smaller image on retry
+                if attempt < retries - 1:
+                    try:
+                        img = cv2.imread(img_path)
+                        if img is not None:
+                            # Reduce size more aggressively
+                            h, w = img.shape[:2]
+                            new_h, new_w = h // 2, w // 2
+                            img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
+                            cv2.imwrite(img_path, img, [cv2.IMWRITE_JPEG_QUALITY, 90])
+                            del img
+                            gc.collect()
+                            print(f"   📐 Reduced image size for retry: {new_w}x{new_h}")
+                    except:
+                        pass
+                
+                # Wait a moment before retry
+                import time
+                time.sleep(0.5)
+            else:
+                # Non-memory error - don't retry
+                raise
+    
+    # All retries failed
+    if last_error:
+        raise Exception(f"Face detection failed after {retries} attempts: {str(last_error)}")
+    else:
+        raise Exception("Face detection failed")
 
 
 def calculate_cosine_distance(embedding1, embedding2):
@@ -341,16 +475,31 @@ async def identify_face(file: UploadFile = File(...)):
             
             cv2.imwrite(file_path, img)
             
+            # Clear memory
+            del img
+            gc.collect()
+            
             # Extract embedding from uploaded image
             try:
-                embedding_objs = DeepFace.represent(
-                    img_path=file_path,
-                    model_name="Facenet",
-                    detector_backend="retinaface",  # Best balance: handles angles + reasonable speed
-                    enforce_detection=False  # Allow slight angle variations
+                embedding_objs = safe_deepface_represent(
+                    img_path=file_path, 
+                    retries=1,
+                    enforce_detection=False  # Allow slight angle variations for identification
                 )
                 test_embedding = embedding_objs[0]["embedding"]
+            except ValueError:
+                return JSONResponse(content={
+                    "identified": False,
+                    "error": "no_face_detected"
+                })
             except Exception as e:
+                error_msg = str(e).lower()
+                if "memory" in error_msg or "oom" in error_msg:
+                    print(f"❌ Memory error during identification: {e}")
+                    return JSONResponse(content={
+                        "identified": False,
+                        "error": "memory_error"
+                    })
                 return JSONResponse(content={
                     "identified": False,
                     "error": "no_face_detected"
@@ -670,14 +819,17 @@ async def upload_student_photos(
     Upload face photos for a student
     
     Validates that each photo contains a detectable face using RetinaFace.
-    Saves photos to known_faces/{student_name}/ directory.
+    Saves photos to:
+    1. Local known_faces/{student_name}/ directory (for embeddings)
+    2. Supabase Storage bucket (for display in UI)
+    3. Stores cloud URL in students.photo_url field
     
     Args:
         student_id: UUID of the student
         photos: List of image files (minimum 1, maximum 10)
     
     Returns:
-        Success status with photo count
+        Success status with photo count and URLs
     """
     
     if not supabase_client:
@@ -712,13 +864,15 @@ async def upload_student_photos(
         student = student_response.data[0]
         student_name = student['name']
         
-        # Create student's folder in known_faces
+        # Create student's folder in known_faces (for embeddings)
         student_folder = os.path.join(KNOWN_FACES_DIR, student_name)
         os.makedirs(student_folder, exist_ok=True)
         
         # Save and validate each photo
         saved_count = 0
         failed_photos = []
+        photo_urls = []
+        first_photo_url = None
         
         for idx, photo in enumerate(photos):
             # Validate file type
@@ -739,18 +893,71 @@ async def upload_student_photos(
                 
                 # Validate face detection
                 try:
-                    DeepFace.represent(
-                        img_path=temp_path,
-                        model_name="Facenet",
-                        detector_backend="retinaface",
-                        enforce_detection=True  # Require face detection
-                    )
+                    # Use safe DeepFace processing with memory management
+                    print(f"   🔍 Processing photo {idx + 1} ({photo.filename})...")
+                    safe_deepface_represent(temp_path, enforce_detection=True)
                     
-                    # Face detected successfully - save to student folder
-                    final_path = os.path.join(student_folder, f"photo_{saved_count + 1}.jpg")
-                    shutil.copy(temp_path, final_path)
+                    # Face detected successfully
+                    photo_number = saved_count + 1
+                    
+                    # 1. Save locally for embeddings
+                    local_path = os.path.join(student_folder, f"photo_{photo_number}.jpg")
+                    shutil.copy(temp_path, local_path)
+                    
+                    # 2. Upload to Supabase Storage
+                    try:
+                        storage_path = f"{student_id}/{student_name}/photo_{photo_number}.jpg"
+                        
+                        with open(temp_path, "rb") as f:
+                            file_content = f.read()
+                            
+                        print(f"📤 Uploading to Supabase: {storage_path}")
+                        print(f"   File size: {len(file_content)} bytes")
+                        print(f"   Bucket: student-photos")
+                        
+                        try:
+                            # Try to upload
+                            upload_response = supabase_client.storage.from_("student-photos").upload(
+                                storage_path,
+                                file_content,
+                                {"content-type": "image/jpeg"}
+                            )
+                            print(f"   Upload response: {upload_response}")
+                        except Exception as upload_err:
+                            # If it fails, might be because path exists, try to replace
+                            print(f"   First upload failed: {upload_err}")
+                            print(f"   Attempting to replace file...")
+                            try:
+                                upload_response = supabase_client.storage.from_("student-photos").update(
+                                    storage_path,
+                                    file_content,
+                                    {"content-type": "image/jpeg"}
+                                )
+                                print(f"   Replace successful")
+                            except Exception as replace_err:
+                                print(f"   Replace also failed: {replace_err}")
+                                raise upload_err  # Raise original error
+                        
+                        # Get public URL
+                        public_url = supabase_client.storage.from_("student-photos").get_public_url(storage_path)
+                        print(f"   ✅ Public URL: {public_url}")
+                        photo_urls.append(public_url)
+                        
+                        # Store first photo URL for student profile
+                        if first_photo_url is None:
+                            first_photo_url = public_url
+                        
+                        print(f"✅ Saved photo {photo_number} for {student_name} (local + cloud)")
+                        
+                    except Exception as storage_error:
+                        print(f"❌ CRITICAL: Cloud upload FAILED for photo {photo_number}: {storage_error}")
+                        print(f"   Error type: {type(storage_error).__name__}")
+                        print(f"   Photo saved locally only (not accessible from app)")
+                        import traceback
+                        traceback.print_exc()
+                        # DO NOT continue - this photo failed and won't be uploaded
+                    
                     saved_count += 1
-                    print(f"✅ Saved photo {saved_count} for {student_name}")
                     
                 except ValueError:
                     failed_photos.append({
@@ -784,6 +991,21 @@ async def upload_student_photos(
                 detail=f"No valid photos with detectable faces. Failed photos: {failed_photos}"
             )
         
+        # Update student record with first photo URL (ONLY if we have a valid cloud URL)
+        db_update_success = False
+        if first_photo_url:
+            try:
+                supabase_client.table('students').update({
+                    "photo_url": first_photo_url
+                }).eq('id', student_id).execute()
+                print(f"✅ Updated student photo_url in database: {first_photo_url}")
+                db_update_success = True
+            except Exception as e:
+                print(f"❌ CRITICAL: Failed to update photo_url in database: {e}")
+                print(f"   Photo is saved locally but NOT accessible from cloud!")
+        else:
+            print(f"⚠️ WARNING: No photo_url to save (Supabase upload failed or skipped)")
+        
         print(f"✅ Successfully uploaded {saved_count} photos for {student_name}")
         
         # Trigger embeddings rebuild in background
@@ -793,6 +1015,7 @@ async def upload_student_photos(
             "success": True,
             "student_name": student_name,
             "photos_saved": saved_count,
+            "photo_urls": photo_urls,
             "message": f"Successfully uploaded {saved_count} photos for {student_name}"
         }
         
@@ -1271,43 +1494,50 @@ async def trip_checkin(trip_id: str, image: UploadFile = File(...)):
                 pass
             raise HTTPException(status_code=400, detail=f"No face detected in image: {str(e)}")
         
-        # Build filtered embeddings dict (only trip participants)
-        trip_embeddings = {}
-        for participant in participants_result.data:
-            student_name = participant.get('name')
-            if student_name and student_name in embeddings_db:
-                trip_embeddings[student_name] = embeddings_db[student_name]
+        # Identify using standard function to match normal camera behavior
+        match_result = identify_from_embedding(test_embedding, THRESHOLD)
         
-        # Identify from filtered embeddings
-        best_match = None
-        best_distance = float('inf')
-
-        for person_name, person_embeddings in trip_embeddings.items():
-            for known_embedding_data in person_embeddings:
-                known_embedding = known_embedding_data['embedding']
-
-                # Use cosine distance (same as other endpoints)
-                distance = calculate_cosine_distance(test_embedding, known_embedding)
-
-                if distance < best_distance:
-                    best_distance = distance
-                    best_match = person_name
-        
-        # Check if match is within threshold
-        if best_match and best_distance < THRESHOLD:
-            confidence = (1 - (best_distance / THRESHOLD)) * 100
+        # Check if match is found and is within threshold
+        if match_result and match_result.get('identified'):
+            best_match = match_result['name']
+            confidence = match_result['confidence']
             
-            # Find participant record
-            participant = next((p for p in participants_result.data if p.get('name') == best_match), None)
+            # Find participant record (check both trip_participants.name and joined students.name)
+            participant = next((p for p in participants_result.data 
+                              if p.get('name') == best_match or 
+                              (p.get('students') and p['students'].get('name') == best_match)), None)
             
             if participant:
+                # Upload photo to Supabase Storage
+                photo_url = None
+                try:
+                    storage_path = f"trip-checkins/{trip_id}/{participant['id']}_{timestamp}.jpg"
+                    
+                    with open(upload_path, "rb") as f:
+                        file_content = f.read()
+                    
+                    # Upload to checkin-photos bucket (or student-photos if you prefer)
+                    supabase_client.storage.from_("student-photos").upload(
+                        storage_path,
+                        file_content,
+                        {"content-type": "image/jpeg"}
+                    )
+                    
+                    # Get public URL
+                    photo_url = supabase_client.storage.from_("student-photos").get_public_url(storage_path)
+                    print(f"✅ Uploaded check-in photo to cloud: {photo_url}")
+                    
+                except Exception as storage_error:
+                    print(f"⚠️ Cloud upload failed for check-in photo: {storage_error}")
+                    # Continue anyway - we still have the recognition result
+                
                 # Update participant as checked in
                 update_data = {
                     "checked_in": True,
                     "check_in_time": datetime.now().isoformat(),
                     "check_in_method": "face",
                     "confidence": confidence,
-                    "photo_url": upload_path
+                    "photo_url": photo_url  # Cloud URL instead of local path
                 }
 
                 supabase_client.table("trip_participants").update(update_data).eq("id", participant['id']).execute()
@@ -1326,7 +1556,8 @@ async def trip_checkin(trip_id: str, image: UploadFile = File(...)):
                         "roll_number": participant['roll_number'],
                         "name": participant['name'],
                         "confidence": round(confidence, 2),
-                        "check_in_time": update_data['check_in_time']
+                        "check_in_time": update_data['check_in_time'],
+                        "photo_url": photo_url
                     }
                 })
 
@@ -1450,6 +1681,7 @@ async def add_participant_to_trip(
     Add a single participant to a trip
     
     Provide either student_id or roll_number
+    Returns warning if student doesn't have embeddings (face photos)
     """
     if not supabase_client:
         raise HTTPException(status_code=500, detail="Supabase not configured")
@@ -1509,10 +1741,26 @@ async def add_participant_to_trip(
         
         result = supabase_client.table("trip_participants").insert(participant_data).execute()
         
-        return JSONResponse(content={
+        # Check if student has embeddings (needed for camera recognition)
+        has_embeddings = False
+        embeddings_warning = None
+        
+        if embeddings_db and student['name'] in embeddings_db:
+            has_embeddings = True
+        else:
+            embeddings_warning = f"⚠️ Student '{student['name']}' has no face photos. They won't be recognized by the trip camera. Upload photos first!"
+            print(embeddings_warning)
+        
+        response_data = {
             "success": True,
-            "participant": result.data[0]
-        })
+            "participant": result.data[0],
+            "has_embeddings": has_embeddings
+        }
+        
+        if embeddings_warning:
+            response_data["warning"] = embeddings_warning
+        
+        return JSONResponse(content=response_data)
         
     except HTTPException:
         raise

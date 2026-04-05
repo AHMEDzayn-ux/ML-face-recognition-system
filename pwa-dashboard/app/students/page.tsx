@@ -160,7 +160,7 @@ export default function StudentsPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4">
         {filteredStudents.map((student) => (
           <div
             key={student.id}
@@ -169,64 +169,67 @@ export default function StudentsPage() {
             {/* Delete Button */}
             <button
               onClick={() => handleDeleteClick(student)}
-              className="absolute top-3 sm:top-4 right-3 sm:right-4 p-1.5 sm:p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all opacity-0 group-hover:opacity-100 z-10"
+              className="absolute top-2 sm:top-3 right-2 sm:right-3 p-1 sm:p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all opacity-0 group-hover:opacity-100 z-10"
               title="Delete student"
             >
               <Trash2 className="w-4 h-4" />
             </button>
 
             {/* Photo Section */}
-            <div className="w-full h-40 sm:h-48 bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-700 dark:to-slate-800 flex items-center justify-center overflow-hidden">
-              <img
-                src={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/students/${student.id}/photo`}
-                alt={student.name}
-                className="w-full h-full object-cover"
-                onError={(e) => {
-                  // Fallback to icon if photo fails to load
-                  const target = e.target as HTMLImageElement;
-                  target.style.display = 'none';
-                }}
-              />
-              <Users className="w-16 h-16 sm:w-20 sm:h-20 text-slate-400 absolute" />
+            <div className="w-full h-32 sm:h-40 bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-700 dark:to-slate-800 flex items-center justify-center overflow-hidden relative">
+              {student.photo_url ? (
+                <img
+                  src={student.photo_url}
+                  alt={student.name}
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    // Fallback to icon if photo fails to load
+                    const target = e.target as HTMLImageElement;
+                    target.style.display = "none";
+                  }}
+                />
+              ) : (
+                <Users className="w-12 h-12 sm:w-14 sm:h-14 text-slate-400" />
+              )}
             </div>
 
             {/* Info Section */}
-            <div className="p-4 sm:p-6">
+            <div className="p-3 sm:p-4">
               <div className="flex items-start justify-between mb-2">
                 <div>
-                  <h3 className="text-base sm:text-lg font-semibold text-slate-900 mb-1">
+                  <h3 className="text-sm sm:text-base font-semibold text-slate-900 mb-0.5">
                     {student.name}
                   </h3>
-                  <p className="text-xs sm:text-sm text-slate-600 mb-3">
+                  <p className="text-xs text-slate-600 mb-2">
                     Roll: {student.roll_number}
                   </p>
                 </div>
                 <div>
                   {student.is_active ? (
-                    <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-green-500" />
+                    <CheckCircle className="w-4 h-4 text-green-500" />
                   ) : (
-                    <XCircle className="w-4 h-4 sm:w-5 sm:h-5 text-red-500" />
+                    <XCircle className="w-4 h-4 text-red-500" />
                   )}
                 </div>
               </div>
 
               {(student.class || student.section) && (
-                <p className="text-xs sm:text-sm text-slate-600 mb-4">
+                <p className="text-xs text-slate-600 mb-2">
                   {student.class} {student.section && `- ${student.section}`}
                 </p>
               )}
 
-              <div className="space-y-2 text-xs sm:text-sm">
+              <div className="space-y-1 text-xs">
                 {student.email && (
-                  <div className="flex items-center text-slate-600 gap-2">
-                    <Mail className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
-                    <span className="truncate">{student.email}</span>
+                  <div className="flex items-center text-slate-600 gap-1.5">
+                    <Mail className="w-3 h-3 flex-shrink-0" />
+                    <span className="truncate text-xs">{student.email}</span>
                   </div>
                 )}
                 {student.phone && (
-                  <div className="flex items-center text-slate-600 gap-2">
-                    <Phone className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
-                    {student.phone}
+                  <div className="flex items-center text-slate-600 gap-1.5">
+                    <Phone className="w-3 h-3 flex-shrink-0" />
+                    <span className="text-xs">{student.phone}</span>
                   </div>
                 )}
               </div>
@@ -238,7 +241,9 @@ export default function StudentsPage() {
       {filteredStudents.length === 0 && (
         <div className="surface-muted text-center py-8 sm:py-12">
           <Users className="w-10 h-10 sm:w-12 sm:h-12 text-gray-400 mx-auto mb-3 sm:mb-4" />
-          <p className="text-sm sm:text-base text-gray-500">No students found</p>
+          <p className="text-sm sm:text-base text-gray-500">
+            No students found
+          </p>
         </div>
       )}
 
