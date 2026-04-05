@@ -7,38 +7,37 @@ const nextConfig = {
   images: {
     remotePatterns: [
       {
-        protocol: 'https',
-        hostname: 'ykrbllmjrevriecowlnr.supabase.co',
+        protocol: "https",
+        hostname: "ykrbllmjrevriecowlnr.supabase.co",
       },
     ],
   },
   headers: async () => {
     return [
       {
-        source: '/sw.js',
+        source: "/sw.js",
         headers: [
           {
-            key: 'Cache-Control',
-            value: 'public, max-age=3600'
+            key: "Cache-Control",
+            value: "public, max-age=3600",
           },
           {
-            key: 'Service-Worker-Allowed',
-            value: '/'
-          }
-        ]
+            key: "Service-Worker-Allowed",
+            value: "/",
+          },
+        ],
       },
       {
-        source: '/manifest.json',
+        source: "/manifest.json",
         headers: [
           {
-            key: 'Content-Type',
-            value: 'application/manifest+json'
-          }
-        ]
-      }
-    ]
-  }
-}
+            key: "Content-Type",
+            value: "application/manifest+json",
+          },
+        ],
+      },
+    ];
+  },
+};
 
-module.exports = nextConfig
-
+module.exports = nextConfig;

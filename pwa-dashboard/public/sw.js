@@ -1,23 +1,20 @@
-const CACHE_NAME = 'attendance-v1';
-const urlsToCache = [
-  '/',
-  '/offline.html',
-];
+const CACHE_NAME = "attendance-v1";
+const urlsToCache = ["/", "/offline.html"];
 
 // Install event
-self.addEventListener('install', (event) => {
+self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       return cache.addAll(urlsToCache).catch(() => {
-        console.log('Some assets failed to cache');
+        console.log("Some assets failed to cache");
       });
-    })
+    }),
   );
   self.skipWaiting();
 });
 
 // Activate event
-self.addEventListener('activate', (event) => {
+self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys().then((cacheNames) => {
       return Promise.all(
@@ -25,16 +22,16 @@ self.addEventListener('activate', (event) => {
           if (cacheName !== CACHE_NAME) {
             return caches.delete(cacheName);
           }
-        })
+        }),
       );
-    })
+    }),
   );
   self.clients.claim();
 });
 
 // Fetch event - Network first, fallback to cache
-self.addEventListener('fetch', (event) => {
-  if (event.request.method !== 'GET') {
+self.addEventListener("fetch", (event) => {
+  if (event.request.method !== "GET") {
     return;
   }
 
@@ -52,8 +49,8 @@ self.addEventListener('fetch', (event) => {
       })
       .catch(() => {
         return caches.match(event.request).then((response) => {
-          return response || new Response('Offline');
+          return response || new Response("Offline");
         });
-      })
+      }),
   );
 });

@@ -35,24 +35,24 @@ export default function DashboardPage() {
 
   async function fetchTodayAttendance() {
     try {
-      const today = new Date().toISOString().split('T')[0];
-      console.log('Fetching attendance for:', today);
-      
+      const today = new Date().toISOString().split("T")[0];
+      console.log("Fetching attendance for:", today);
+
       const { data, error } = await supabase
-        .from('attendance')
-        .select('*')
-        .eq('date', today)
-        .order('timestamp', { ascending: false });
+        .from("attendance")
+        .select("*")
+        .eq("date", today)
+        .order("timestamp", { ascending: false });
 
       if (error) {
-        console.error('Supabase error:', error);
+        console.error("Supabase error:", error);
         throw error;
       }
-      
-      console.log('Attendance data:', data);
+
+      console.log("Attendance data:", data);
       setAttendance(data || []);
     } catch (error) {
-      console.error('Error fetching attendance:', error);
+      console.error("Error fetching attendance:", error);
       // Set empty array so page still loads
       setAttendance([]);
     } finally {
@@ -76,7 +76,9 @@ export default function DashboardPage() {
             <p className="mb-2 text-[0.65rem] sm:text-[0.72rem] font-semibold uppercase tracking-[0.2em] sm:tracking-[0.24em] text-sky-700">
               Attendance Overview
             </p>
-            <h1 className="section-title text-2xl sm:text-3xl md:text-4xl">Dashboard</h1>
+            <h1 className="section-title text-2xl sm:text-3xl md:text-4xl">
+              Dashboard
+            </h1>
             <p className="section-subtitle mt-2 sm:mt-3 text-xs sm:text-sm md:text-base">
               Live check-ins and performance indicators for your campus.
             </p>

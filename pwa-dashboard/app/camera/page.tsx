@@ -70,7 +70,9 @@ export default function CameraPage() {
       )}
 
       <div className="mt-6 sm:mt-8 surface-muted p-4 sm:p-6">
-        <h3 className="mb-3 font-semibold text-sm sm:text-base text-sky-900">Tips:</h3>
+        <h3 className="mb-3 font-semibold text-sm sm:text-base text-sky-900">
+          Tips:
+        </h3>
         <ul className="space-y-2 text-xs sm:text-sm text-sky-800">
           <li>• Ensure good lighting on your face</li>
           <li>• Face the camera directly (avoid extreme angles)</li>
