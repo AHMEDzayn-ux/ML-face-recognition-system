@@ -472,5 +472,11 @@
     "timestamp": "2026-04-05T02:30:43.244120",
     "confidence": 11.338888687141747,
     "status": "present"
+  },
+  {
+    "name": "Ruzaini_Ahmedh",
+    "timestamp": "2026-04-05T14:58:26.782753",
+    "confidence": 16.999029098443387,
+    "status": "present"
   }
 ]

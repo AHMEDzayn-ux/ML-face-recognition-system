@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Manrope, Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 import Navbar from "@/components/Navbar";
+import InstallPrompt from "@/components/InstallPrompt";
 
 const manrope = Manrope({
   subsets: ["latin"],
@@ -38,6 +39,7 @@ export default function RootLayout({
       <body className={`${manrope.variable} ${jakarta.variable}`}>
         <Navbar />
         <main className="min-h-screen">{children}</main>
+        <InstallPrompt />
       </body>
     </html>
   );
