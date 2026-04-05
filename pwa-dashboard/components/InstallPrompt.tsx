@@ -75,13 +75,13 @@ export default function InstallPrompt() {
   }
 
   return (
-    <div className="fixed bottom-20 right-4 z-40 animate-in fade-in slide-in-from-bottom-4 duration-300">
-      <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg shadow-lg p-3 max-w-xs">
+    <div className="fixed bottom-24 right-4 sm:right-6 z-40 animate-in fade-in slide-in-from-bottom-4 duration-300 md:bottom-32">
+      <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg shadow-lg p-3 sm:p-4 max-w-xs">
         <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <Download className="h-5 w-5 flex-shrink-0" />
-            <div>
-              <p className="font-semibold text-sm">Install App</p>
+          <div className="flex items-start gap-2 sm:gap-3">
+            <Download className="h-4 w-4 sm:h-5 sm:w-5 flex-shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-xs sm:text-sm">Install App</p>
               <p className="text-xs text-blue-100">Quick access on home screen</p>
             </div>
           </div>
@@ -96,7 +96,7 @@ export default function InstallPrompt() {
         <button
           onClick={handleInstall}
           disabled={isInstalling}
-          className="mt-3 w-full bg-white text-blue-600 font-semibold py-2 rounded-lg hover:bg-blue-50 transition-colors disabled:opacity-50 text-sm"
+          className="mt-2 sm:mt-3 w-full bg-white text-blue-600 font-semibold py-2 sm:py-2.5 rounded-lg hover:bg-blue-50 transition-colors disabled:opacity-50 text-xs sm:text-sm"
         >
           {isInstalling ? "Installing..." : "Install Now"}
         </button>

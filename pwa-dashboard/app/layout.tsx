@@ -36,9 +36,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={`${manrope.variable} ${jakarta.variable}`}>
+      <body className={`${manrope.variable} ${jakarta.variable} bg-slate-50`}>
         <Navbar />
-        <main className="min-h-screen">{children}</main>
+        <main className="min-h-[calc(100vh-64px)]">{children}</main>
         <InstallPrompt />
       </body>
     </html>

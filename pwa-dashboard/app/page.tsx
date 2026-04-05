@@ -70,23 +70,22 @@ export default function DashboardPage() {
 
   return (
     <div className="page-shell">
-      <div className="surface-card fade-up mb-8 overflow-hidden p-6 md:p-8">
-        <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
+      <div className="surface-card fade-up mb-6 sm:mb-8 overflow-hidden p-4 sm:p-6 md:p-8">
+        <div className="flex flex-col gap-4 sm:gap-6 md:flex-row md:items-end md:justify-between">
           <div>
-            <p className="mb-2 text-[0.72rem] font-semibold uppercase tracking-[0.24em] text-sky-700">
+            <p className="mb-2 text-[0.65rem] sm:text-[0.72rem] font-semibold uppercase tracking-[0.2em] sm:tracking-[0.24em] text-sky-700">
               Attendance Overview
             </p>
-            <h1 className="section-title text-3xl md:text-4xl">Dashboard</h1>
-            <p className="section-subtitle mt-3 text-sm md:text-base">
+            <h1 className="section-title text-2xl sm:text-3xl md:text-4xl">Dashboard</h1>
+            <p className="section-subtitle mt-2 sm:mt-3 text-xs sm:text-sm md:text-base">
               Live check-ins and performance indicators for your campus.
             </p>
           </div>
 
-          <div className="rounded-xl border border-slate-200 bg-white/80 px-4 py-3 text-sm font-medium text-slate-600 shadow-sm">
+          <div className="rounded-lg sm:rounded-xl border border-slate-200 bg-white/80 px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm font-medium text-slate-600 shadow-sm whitespace-nowrap">
             {new Date().toLocaleDateString("en-US", {
-              weekday: "long",
-              year: "numeric",
-              month: "long",
+              weekday: "short",
+              month: "short",
               day: "numeric",
             })}
           </div>
@@ -97,7 +96,7 @@ export default function DashboardPage() {
         <StatsCards attendance={attendance} />
       </div>
 
-      <div className="mt-8 fade-up fade-up-delay-2">
+      <div className="mt-6 sm:mt-8 fade-up fade-up-delay-2">
         <RecentAttendance attendance={attendance} />
       </div>
     </div>

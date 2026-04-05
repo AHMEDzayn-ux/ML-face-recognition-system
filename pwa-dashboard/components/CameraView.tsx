@@ -257,13 +257,13 @@ export default function CameraView({ onResult }: CameraViewProps) {
 
   return (
     <div className="space-y-4">
-      <div className="relative overflow-hidden rounded-xl border border-slate-300/50 bg-slate-900">
-        <video ref={videoRef} autoPlay playsInline muted className="w-full" />
+      <div className="relative overflow-hidden rounded-lg sm:rounded-xl border border-slate-300/50 bg-slate-900">
+        <video ref={videoRef} autoPlay playsInline muted className="w-full h-auto block" />
         <canvas ref={canvasRef} className="hidden" />
 
         {/* Queue status overlay */}
         {uploadQueue.length > 0 && (
-          <div className="absolute top-4 right-4 bg-black/70 backdrop-blur-sm text-white px-3 py-2 rounded-lg text-sm font-medium">
+          <div className="absolute top-3 sm:top-4 right-3 sm:right-4 bg-black/70 backdrop-blur-sm text-white px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium">
             Queue: {uploadQueue.filter((i) => i.status === "pending").length}{" "}
             pending |{" "}
             {uploadQueue.filter((i) => i.status === "processing").length}{" "}
@@ -275,12 +275,12 @@ export default function CameraView({ onResult }: CameraViewProps) {
       {/* Capture button - NEVER DISABLED! */}
       <button
         onClick={capture}
-        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-4 px-6 rounded-lg transition-colors flex items-center justify-center"
+        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 sm:py-4 px-4 sm:px-6 rounded-lg sm:rounded-lg transition-colors flex items-center justify-center text-sm sm:text-base"
       >
-        <Camera className="w-5 h-5 mr-2" />
+        <Camera className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
         Capture & Mark Attendance
         {captureCount > 0 && (
-          <span className="ml-2 bg-white/20 px-2 py-1 rounded text-sm">
+          <span className="ml-2 bg-white/20 px-2 py-0.5 sm:py-1 rounded text-xs sm:text-sm">
             {captureCount}
           </span>
         )}
