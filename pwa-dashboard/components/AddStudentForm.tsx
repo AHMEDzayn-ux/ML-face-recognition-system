@@ -118,8 +118,8 @@ export default function AddStudentForm({
       return;
     }
 
-    if (photos.length < 3) {
-      setError("Minimum 3 photos required for accurate face recognition");
+    if (photos.length < 1) {
+      setError("At least 1 photo is required");
       return;
     }
 
@@ -319,7 +319,7 @@ export default function AddStudentForm({
                   Face Photos <span className="text-red-500">*</span>
                 </h3>
                 <span className="text-xs text-gray-500 dark:text-gray-400">
-                  {photos.length}/10 photos (min: 3)
+                  {photos.length}/10 photos (min: 1)
                 </span>
               </div>
 
@@ -403,8 +403,8 @@ export default function AddStudentForm({
               )}
 
               <p className="text-xs text-gray-500 dark:text-gray-400">
-                💡 <strong>Tip:</strong> Upload 3-10 clear photos of the
-                student's face from different angles for best recognition
+                💡 <strong>Tip:</strong> Upload at least 1 clear photo of the
+                student's face. More photos (up to 10) improve recognition
                 accuracy.
               </p>
             </div>
@@ -421,7 +421,7 @@ export default function AddStudentForm({
               </button>
               <button
                 type="submit"
-                disabled={isSubmitting || photos.length < 3}
+                disabled={isSubmitting || photos.length < 1}
                 className="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {isSubmitting ? (

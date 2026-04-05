@@ -10,7 +10,7 @@ os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'  # Disable oneDNN custom operations
 
 from fastapi import FastAPI, File, UploadFile, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from typing import List, Optional
 import uvicorn
 import pickle
@@ -674,7 +674,7 @@ async def upload_student_photos(
     
     Args:
         student_id: UUID of the student
-        photos: List of image files (minimum 3, maximum 10)
+        photos: List of image files (minimum 1, maximum 10)
     
     Returns:
         Success status with photo count
@@ -687,10 +687,10 @@ async def upload_student_photos(
         )
     
     # Validate photo count
-    if len(photos) < 3:
+    if len(photos) < 1:
         raise HTTPException(
             status_code=400,
-            detail="Minimum 3 photos required for accurate face recognition"
+            detail="Minimum 1 photo required"
         )
     
     if len(photos) > 10:
@@ -773,15 +773,15 @@ async def upload_student_photos(
                     "reason": f"Upload error: {str(e)}"
                 })
         
-        # Check if we have enough valid photos
-        if saved_count < 3:
+        # Check if we have at least 1 valid photo
+        if saved_count < 1:
             # Clean up - remove folder if not enough photos
             if os.path.exists(student_folder):
                 shutil.rmtree(student_folder)
             
             raise HTTPException(
                 status_code=400,
-                detail=f"Only {saved_count} valid photos with detectable faces. Minimum 3 required. Failed photos: {failed_photos}"
+                detail=f"No valid photos with detectable faces. Failed photos: {failed_photos}"
             )
         
         print(f"✅ Successfully uploaded {saved_count} photos for {student_name}")
@@ -807,6 +807,41 @@ async def upload_student_photos(
     except Exception as e:
         print(f"❌ Error uploading photos: {e}")
         raise HTTPException(status_code=500, detail=f"Error uploading photos: {str(e)}")
+
+
+@app.get("/api/students/{student_id}/photo")
+async def get_student_photo(student_id: str):
+    """Get the first photo of a student by student ID"""
+    if not supabase_client:
+        raise HTTPException(status_code=503, detail="Supabase not configured")
+    
+    try:
+        # Get student info
+        student_response = supabase_client.table('students')\
+            .select('*')\
+            .eq('id', student_id)\
+            .execute()
+        
+        if not student_response.data or len(student_response.data) == 0:
+            raise HTTPException(status_code=404, detail="Student not found")
+        
+        student = student_response.data[0]
+        student_name = student['name']
+        
+        # Look for first photo
+        student_folder = os.path.join(KNOWN_FACES_DIR, student_name)
+        photo_path = os.path.join(student_folder, "photo_1.jpg")
+        
+        if not os.path.exists(photo_path):
+            raise HTTPException(status_code=404, detail="No photo found for student")
+        
+        return FileResponse(path=photo_path, media_type="image/jpeg")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error fetching student photo: {e}")
+        raise HTTPException(status_code=500, detail=f"Error fetching photo: {str(e)}")
 
 
 async def rebuild_embeddings_background():

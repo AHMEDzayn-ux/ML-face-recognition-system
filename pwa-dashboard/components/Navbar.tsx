@@ -2,13 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  Camera,
-  Users,
-  FileText,
-  ScanLine,
-  Bus,
-} from "lucide-react";
+import { Camera, Users, FileText, ScanLine, Bus } from "lucide-react";
 
 export default function Navbar() {
   const pathname = usePathname();

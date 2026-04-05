@@ -164,56 +164,72 @@ export default function StudentsPage() {
         {filteredStudents.map((student) => (
           <div
             key={student.id}
-            className="surface-card card-hover p-4 sm:p-6 relative group"
+            className="surface-card card-hover overflow-hidden relative group"
           >
             {/* Delete Button */}
             <button
               onClick={() => handleDeleteClick(student)}
-              className="absolute top-3 sm:top-4 right-3 sm:right-4 p-1.5 sm:p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+              className="absolute top-3 sm:top-4 right-3 sm:right-4 p-1.5 sm:p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all opacity-0 group-hover:opacity-100 z-10"
               title="Delete student"
             >
               <Trash2 className="w-4 h-4" />
             </button>
 
-            <div className="flex items-start justify-between mb-4">
-              <div className="bg-sky-100 p-2 sm:p-3 rounded-full">
-                <Users className="w-5 h-5 sm:w-6 sm:h-6 text-sky-700" />
-              </div>
-              <div>
-                {student.is_active ? (
-                  <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-green-500" />
-                ) : (
-                  <XCircle className="w-4 h-4 sm:w-5 sm:h-5 text-red-500" />
-                )}
-              </div>
+            {/* Photo Section */}
+            <div className="w-full h-40 sm:h-48 bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-700 dark:to-slate-800 flex items-center justify-center overflow-hidden">
+              <img
+                src={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/students/${student.id}/photo`}
+                alt={student.name}
+                className="w-full h-full object-cover"
+                onError={(e) => {
+                  // Fallback to icon if photo fails to load
+                  const target = e.target as HTMLImageElement;
+                  target.style.display = 'none';
+                }}
+              />
+              <Users className="w-16 h-16 sm:w-20 sm:h-20 text-slate-400 absolute" />
             </div>
 
-            <h3 className="text-base sm:text-lg font-semibold text-slate-900 mb-1">
-              {student.name}
-            </h3>
-            <p className="text-xs sm:text-sm text-slate-600 mb-4">
-              Roll: {student.roll_number}
-            </p>
-
-            {(student.class || student.section) && (
-              <p className="text-xs sm:text-sm text-slate-600 mb-4">
-                {student.class} {student.section && `- ${student.section}`}
-              </p>
-            )}
-
-            <div className="space-y-2 text-xs sm:text-sm">
-              {student.email && (
-                <div className="flex items-center text-slate-600 gap-2">
-                  <Mail className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
-                  <span className="truncate">{student.email}</span>
+            {/* Info Section */}
+            <div className="p-4 sm:p-6">
+              <div className="flex items-start justify-between mb-2">
+                <div>
+                  <h3 className="text-base sm:text-lg font-semibold text-slate-900 mb-1">
+                    {student.name}
+                  </h3>
+                  <p className="text-xs sm:text-sm text-slate-600 mb-3">
+                    Roll: {student.roll_number}
+                  </p>
                 </div>
-              )}
-              {student.phone && (
-                <div className="flex items-center text-slate-600 gap-2">
-                  <Phone className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
-                  {student.phone}
+                <div>
+                  {student.is_active ? (
+                    <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-green-500" />
+                  ) : (
+                    <XCircle className="w-4 h-4 sm:w-5 sm:h-5 text-red-500" />
+                  )}
                 </div>
+              </div>
+
+              {(student.class || student.section) && (
+                <p className="text-xs sm:text-sm text-slate-600 mb-4">
+                  {student.class} {student.section && `- ${student.section}`}
+                </p>
               )}
+
+              <div className="space-y-2 text-xs sm:text-sm">
+                {student.email && (
+                  <div className="flex items-center text-slate-600 gap-2">
+                    <Mail className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
+                    <span className="truncate">{student.email}</span>
+                  </div>
+                )}
+                {student.phone && (
+                  <div className="flex items-center text-slate-600 gap-2">
+                    <Phone className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
+                    {student.phone}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         ))}
