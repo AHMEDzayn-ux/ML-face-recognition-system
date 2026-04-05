@@ -489,3 +489,220 @@ export async function deleteTrip(tripId: string): Promise<{
 
   return response.json();
 }
+
+// ==================== TRIP SESSIONS API ====================
+
+export interface CreateSessionData {
+  name: string;
+  description?: string;
+  session_date: string;
+  start_time?: string;
+  end_time?: string;
+}
+
+export async function createSession(
+  tripId: string,
+  sessionData: CreateSessionData
+): Promise<{
+  success: boolean;
+  session?: any;
+  message?: string;
+}> {
+  const formData = new FormData();
+  formData.append('name', sessionData.name);
+  if (sessionData.description) formData.append('description', sessionData.description);
+  formData.append('session_date', sessionData.session_date);
+  if (sessionData.start_time) formData.append('start_time', sessionData.start_time);
+  if (sessionData.end_time) formData.append('end_time', sessionData.end_time);
+
+  const response = await fetch(`${API_URL}/api/trips/${tripId}/sessions`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to create session');
+  }
+
+  return response.json();
+}
+
+export async function getSessions(tripId: string): Promise<{
+  success: boolean;
+  sessions: any[];
+  count: number;
+}> {
+  const response = await fetch(`${API_URL}/api/trips/${tripId}/sessions`);
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to fetch sessions');
+  }
+  return response.json();
+}
+
+export async function updateSessionStatus(
+  sessionId: string,
+  status: 'planning' | 'active' | 'completed' | 'cancelled'
+): Promise<{
+  success: boolean;
+  session?: any;
+  message?: string;
+}> {
+  const formData = new FormData();
+  formData.append('status', status);
+
+  const response = await fetch(`${API_URL}/api/sessions/${sessionId}/status`, {
+    method: 'PATCH',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to update session status');
+  }
+
+  return response.json();
+}
+
+export async function addParticipantToSession(
+  sessionId: string,
+  studentId?: string,
+  rollNumber?: string
+): Promise<{
+  success: boolean;
+  participant?: any;
+  message?: string;
+}> {
+  const formData = new FormData();
+  if (studentId) formData.append('student_id', studentId);
+  if (rollNumber) formData.append('roll_number', rollNumber);
+
+  const response = await fetch(`${API_URL}/api/sessions/${sessionId}/add-participant`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to add participant to session');
+  }
+
+  return response.json();
+}
+
+export async function getSessionParticipants(
+  sessionId: string,
+  checkedInOnly?: boolean
+): Promise<{
+  success: boolean;
+  participants: any[];
+  stats: {
+    total: number;
+    checked_in: number;
+    missing: number;
+    percentage: number;
+  };
+}> {
+  const url = new URL(`${API_URL}/api/sessions/${sessionId}/participants`);
+  if (checkedInOnly !== undefined) {
+    url.searchParams.append('checked_in', checkedInOnly.toString());
+  }
+
+  const response = await fetch(url.toString());
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to fetch session participants');
+  }
+
+  return response.json();
+}
+
+export async function sessionCheckin(
+  sessionId: string,
+  imageFile: File
+): Promise<{
+  success: boolean;
+  name?: string;
+  confidence?: number;
+  message?: string;
+}> {
+  const formData = new FormData();
+  formData.append('file', imageFile);
+
+  const response = await fetch(`${API_URL}/api/sessions/${sessionId}/checkin`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to check in to session');
+  }
+
+  return response.json();
+}
+
+export async function markSessionManual(
+  sessionId: string,
+  participantId: string,
+  status: boolean
+): Promise<{
+  success: boolean;
+  participant?: any;
+  message?: string;
+}> {
+  const formData = new FormData();
+  formData.append('participant_id', participantId);
+  formData.append('status', status.toString());
+
+  const response = await fetch(`${API_URL}/api/sessions/${sessionId}/mark-manual`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to mark attendance');
+  }
+
+  return response.json();
+}
+
+export async function removeParticipantFromSession(
+  sessionId: string,
+  participantId: string
+): Promise<{
+  success: boolean;
+  message?: string;
+}> {
+  const response = await fetch(
+    `${API_URL}/api/sessions/${sessionId}/participants/${participantId}`,
+    {
+      method: 'DELETE',
+    }
+  );
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to remove participant');
+  }
+
+  return response.json();
+}
+
+export async function deleteSession(sessionId: string): Promise<{
+  success: boolean;
+  message?: string;
+}> {
+  const response = await fetch(`${API_URL}/api/sessions/${sessionId}`, {
+    method: 'DELETE',
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to delete session');
+  }
+
+  return response.json();
+}

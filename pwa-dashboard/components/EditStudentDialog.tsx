@@ -2,7 +2,11 @@
 
 import { useState, useCallback } from "react";
 import { Student } from "@/lib/supabase";
-import { updateStudent, UpdateStudentData, uploadStudentPhotos } from "@/lib/api";
+import {
+  updateStudent,
+  UpdateStudentData,
+  uploadStudentPhotos,
+} from "@/lib/api";
 import { X, Upload } from "lucide-react";
 
 interface EditStudentDialogProps {
@@ -40,43 +44,40 @@ export default function EditStudentDialog({
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handlePhotoSelect = useCallback(
-    (files: FileList | null) => {
-      if (!files) return;
+  const handlePhotoSelect = useCallback((files: FileList | null) => {
+    if (!files) return;
 
-      const fileArray = Array.from(files);
-      const imageFiles = fileArray.filter((file) =>
-        file.type.startsWith("image/"),
-      );
+    const fileArray = Array.from(files);
+    const imageFiles = fileArray.filter((file) =>
+      file.type.startsWith("image/"),
+    );
 
-      if (imageFiles.length === 0) {
-        setError("Please select valid image files");
-        return;
-      }
+    if (imageFiles.length === 0) {
+      setError("Please select valid image files");
+      return;
+    }
 
-      if (imageFiles.length > 10) {
-        setError("Maximum 10 photos allowed");
-        return;
-      }
+    if (imageFiles.length > 10) {
+      setError("Maximum 10 photos allowed");
+      return;
+    }
 
-      setPhotos(imageFiles);
-      setError(null);
+    setPhotos(imageFiles);
+    setError(null);
 
-      // Create previews
-      const previews = imageFiles.map((file) => {
-        return new Promise<string>((resolve) => {
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            resolve(reader.result as string);
-          };
-          reader.readAsDataURL(file);
-        });
+    // Create previews
+    const previews = imageFiles.map((file) => {
+      return new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          resolve(reader.result as string);
+        };
+        reader.readAsDataURL(file);
       });
+    });
 
-      Promise.all(previews).then(setPhotoPreviews);
-    },
-    [],
-  );
+    Promise.all(previews).then(setPhotoPreviews);
+  }, []);
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();

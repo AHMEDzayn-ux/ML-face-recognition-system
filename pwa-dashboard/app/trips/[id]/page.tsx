@@ -7,10 +7,13 @@ import {
   getTripParticipants,
   markManualCheckin,
   updateTripStatus,
+  getSessions,
+  createSession,
 } from "@/lib/api";
 import { TripParticipant, Trip, TripStats } from "@/lib/supabase";
 import { supabase } from "@/lib/supabase";
 import AddParticipantsDialog from "@/components/AddParticipantsDialog";
+import CreateSessionDialog from "@/components/CreateSessionDialog";
 import {
   ArrowLeft,
   Camera,
@@ -24,7 +27,28 @@ import {
   AlertCircle,
   UserCheck,
   UserPlus,
+  Plus,
 } from "lucide-react";
+
+interface SessionInfo {
+  id: string;
+  trip_id: string;
+  name: string;
+  description?: string;
+  session_date: string;
+  start_time?: string;
+  end_time?: string;
+  status: "planning" | "active" | "completed" | "cancelled";
+  expected_participants: number;
+  created_at: string;
+  updated_at: string;
+  stats: {
+    total: number;
+    checked_in: number;
+    missing: number;
+    percentage: number;
+  };
+}
 
 export default function TripDashboardPage() {
   const params = useParams();
@@ -43,10 +67,17 @@ export default function TripDashboardPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filter, setFilter] = useState<"all" | "checked_in" | "missing">("all");
   const [showAddDialog, setShowAddDialog] = useState(false);
+  const [showCreateSessionDialog, setShowCreateSessionDialog] = useState(false);
+  
+  // Session management
+  const [sessions, setSessions] = useState<SessionInfo[]>([]);
+  const [selectedSession, setSelectedSession] = useState<SessionInfo | null>(null);
+  const [loadingSessions, setLoadingSessions] = useState(false);
 
   useEffect(() => {
     loadTripData();
-    
+    loadSessions();
+
     // Subscribe to real-time updates and return cleanup function
     const cleanup = subscribeToUpdates();
     return cleanup;
@@ -69,22 +100,41 @@ export default function TripDashboardPage() {
     }
   };
 
+  const loadSessions = async () => {
+    try {
+      setLoadingSessions(true);
+      const data = await getSessions(tripId);
+      if (data.success && data.sessions) {
+        setSessions(data.sessions);
+        if (data.sessions.length > 0 && !selectedSession) {
+          setSelectedSession(data.sessions[0]);
+        }
+      }
+    } catch (error) {
+      console.error("Error loading sessions:", error);
+    } finally {
+      setLoadingSessions(false);
+    }
+  };
+
   const subscribeToUpdates = () => {
     const channel = supabase.channel(`trip_${tripId}_participants`);
-    
-    channel.on(
-      "postgres_changes",
-      {
-        event: "*",
-        schema: "public",
-        table: "trip_participants",
-        filter: `trip_id=eq.${tripId}`,
-      },
-      (payload) => {
-        console.log("Real-time update:", payload);
-        loadTripData();
-      }
-    ).subscribe();
+
+    channel
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "trip_participants",
+          filter: `trip_id=eq.${tripId}`,
+        },
+        (payload) => {
+          console.log("Real-time update:", payload);
+          loadTripData();
+        },
+      )
+      .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
@@ -112,6 +162,11 @@ export default function TripDashboardPage() {
     } catch (error) {
       console.error("Error updating status:", error);
     }
+  };
+
+  const handleSessionCreated = () => {
+    setShowCreateSessionDialog(false);
+    loadSessions();
   };
 
   const filteredParticipants = participants.filter((p) => {
@@ -202,25 +257,34 @@ export default function TripDashboardPage() {
               </div>
             </div>
 
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               <button
                 onClick={() => setShowAddDialog(true)}
                 className="flex items-center gap-2 px-4 py-2 bg-slate-600 hover:bg-slate-700 text-white rounded-lg font-semibold text-sm"
               >
                 <UserPlus className="h-4 w-4" />
-                Add Participants
+                Add Student
               </button>
+              
+              <button
+                onClick={() => setShowCreateSessionDialog(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-semibold text-sm"
+              >
+                <Plus className="h-4 w-4" />
+                Add Session
+              </button>
+
               {trip.status === "planning" && (
                 <button
                   onClick={() => handleUpdateStatus("active")}
                   className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold text-sm"
                 >
-                  Start Trip
+                  Start
                 </button>
               )}
               <Link
-                href={`/trips/${tripId}/camera`}
-                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-semibold shadow-lg shadow-blue-600/30"
+                href={`/trips/${tripId}/camera?session=${selectedSession?.id || ""}`}
+                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-semibold"
               >
                 <Camera className="h-5 w-5" />
                 Camera
@@ -229,11 +293,65 @@ export default function TripDashboardPage() {
           </div>
         </div>
 
+        {/* Sessions Selector */}
+        {sessions.length > 0 && (
+          <div className="bg-white rounded-xl border border-slate-200 p-4 mb-6 shadow-sm">
+            <div className="flex items-center gap-4 flex-wrap">
+              <label className="font-semibold text-slate-900">Current Session:</label>
+              <div className="flex gap-2 flex-wrap">
+                {sessions.map((session) => (
+                  <button
+                    key={session.id}
+                    onClick={() => setSelectedSession(session)}
+                    className={`px-4 py-2 rounded-lg font-medium text-sm transition-all ${
+                      selectedSession?.id === session.id
+                        ? "bg-blue-600 text-white shadow-lg"
+                        : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                    }`}
+                  >
+                    {session.name}
+                    <span className="ml-2 text-xs opacity-75">
+                      ({session.stats.checked_in}/{session.stats.total})
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Selected Session Info */}
+        {selectedSession && (
+          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-200 p-4 mb-6">
+            <h3 className="font-bold text-slate-900 mb-2 text-lg">
+              {selectedSession.name}
+            </h3>
+            <div className="grid grid-cols-4 gap-4">
+              <div className="bg-white rounded-lg p-3">
+                <div className="text-xs text-slate-600">Total Expected</div>
+                <div className="text-2xl font-bold text-slate-900">{selectedSession.stats.total}</div>
+              </div>
+              <div className="bg-white rounded-lg p-3">
+                <div className="text-xs text-green-600">Checked In</div>
+                <div className="text-2xl font-bold text-green-600">{selectedSession.stats.checked_in}</div>
+              </div>
+              <div className="bg-white rounded-lg p-3">
+                <div className="text-xs text-red-600">Missing</div>
+                <div className="text-2xl font-bold text-red-600">{selectedSession.stats.missing}</div>
+              </div>
+              <div className="bg-white rounded-lg p-3">
+                <div className="text-xs text-blue-600">Attendance</div>
+                <div className="text-2xl font-bold text-blue-600">{selectedSession.stats.percentage.toFixed(0)}%</div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Progress Bar */}
         <div className="bg-white rounded-xl border border-slate-200 p-6 mb-6 shadow-sm">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-lg font-bold text-slate-900">
-              Check-in Progress
+              Overall Check-in Progress
             </h2>
             <span className="text-3xl font-bold text-blue-600">
               {stats.checked_in}/{stats.total}
@@ -431,6 +549,16 @@ export default function TripDashboardPage() {
             tripId={tripId}
             onClose={() => setShowAddDialog(false)}
             onSuccess={() => loadTripData()}
+          />
+        )}
+
+        {/* Create Session Dialog */}
+        {showCreateSessionDialog && (
+          <CreateSessionDialog
+            tripId={tripId}
+            isOpen={showCreateSessionDialog}
+            onClose={() => setShowCreateSessionDialog(false)}
+            onSessionCreated={handleSessionCreated}
           />
         )}
       </div>

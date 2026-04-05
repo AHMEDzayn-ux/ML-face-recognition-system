@@ -2020,6 +2020,612 @@ async def delete_trip(trip_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ==================== TRIP SESSIONS MANAGEMENT ====================
+
+@app.post("/api/trips/{trip_id}/sessions")
+async def create_session(
+    trip_id: str,
+    name: str = Form(...),
+    description: str = Form(None),
+    session_date: str = Form(...),
+    start_time: str = Form(None),
+    end_time: str = Form(None)
+):
+    """
+    Create a new session within a trip
+    
+    Args:
+        trip_id: ID of the trip
+        name: Session name (e.g., "Morning Session", "Afternoon Session")
+        description: Optional description
+        session_date: Date in YYYY-MM-DD format
+        start_time: Optional start time in HH:MM format
+        end_time: Optional end time in HH:MM format
+    
+    Returns:
+        Created session object
+    """
+    if not supabase_client:
+        raise HTTPException(status_code=503, detail="Supabase not configured")
+    
+    try:
+        # Verify trip exists
+        trip_result = supabase_client.table("trips").select("*").eq("id", trip_id).execute()
+        if not trip_result.data:
+            raise HTTPException(status_code=404, detail="Trip not found")
+        
+        # Check if session name already exists in this trip
+        existing = supabase_client.table("trip_sessions")\
+            .select("*")\
+            .eq("trip_id", trip_id)\
+            .eq("name", name)\
+            .execute()
+        
+        if existing.data:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Session '{name}' already exists in this trip"
+            )
+        
+        # Get all trip participants
+        participants = supabase_client.table("trip_participants")\
+            .select("student_id, students(id, roll_number, name)")\
+            .eq("trip_id", trip_id)\
+            .execute()
+        
+        # Create session
+        session_data = {
+            "trip_id": trip_id,
+            "name": name,
+            "description": description,
+            "session_date": session_date,
+            "start_time": start_time,
+            "end_time": end_time,
+            "status": "planning",
+            "expected_participants": len(participants.data) if participants.data else 0
+        }
+        
+        result = supabase_client.table("trip_sessions").insert(session_data).execute()
+        
+        if result.data:
+            session_id = result.data[0]["id"]
+            
+            # Add all trip participants to session_attendance
+            if participants.data:
+                attendance_records = []
+                for participant in participants.data:
+                    student = participant.get("students")
+                    if student:
+                        attendance_records.append({
+                            "session_id": session_id,
+                            "trip_id": trip_id,
+                            "student_id": participant["student_id"],
+                            "roll_number": student.get("roll_number", ""),
+                            "name": student.get("name", ""),
+                            "expected": True,
+                            "checked_in": False
+                        })
+                
+                if attendance_records:
+                    supabase_client.table("session_attendance").insert(attendance_records).execute()
+                    print(f"✅ Added {len(attendance_records)} participants to session")
+            
+            print(f"✅ Created session: {name} on {session_date}")
+            return JSONResponse(content={
+                "success": True,
+                "session": result.data[0],
+                "message": f"Session '{name}' created successfully with {len(participants.data)} participants"
+            })
+        else:
+            raise HTTPException(status_code=500, detail="Failed to create session")
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error creating session: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/trips/{trip_id}/sessions")
+async def get_sessions(trip_id: str):
+    """Get all sessions for a trip with attendance statistics"""
+    if not supabase_client:
+        raise HTTPException(status_code=503, detail="Supabase not configured")
+    
+    try:
+        # Get sessions with stats
+        results = supabase_client.table("session_stats")\
+            .select("*")\
+            .eq("trip_id", trip_id)\
+            .order("session_date", desc=False)\
+            .execute()
+        
+        # Transform flat data into nested structure
+        sessions = []
+        if results.data:
+            for row in results.data:
+                session = {
+                    "id": row.get("id"),
+                    "trip_id": row.get("trip_id"),
+                    "name": row.get("name"),
+                    "description": row.get("description"),
+                    "session_date": row.get("session_date"),
+                    "start_time": row.get("start_time"),
+                    "end_time": row.get("end_time"),
+                    "status": row.get("status"),
+                    "expected_participants": row.get("expected_participants"),
+                    "created_at": row.get("created_at"),
+                    "updated_at": row.get("updated_at"),
+                    "stats": {
+                        "total": row.get("total", 0),
+                        "checked_in": row.get("checked_in", 0),
+                        "missing": row.get("missing", 0),
+                        "percentage": row.get("percentage", 0)
+                    }
+                }
+                sessions.append(session)
+        
+        return JSONResponse(content={
+            "success": True,
+            "sessions": sessions,
+            "count": len(sessions)
+        })
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error fetching sessions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.patch("/api/sessions/{session_id}/status")
+async def update_session_status(session_id: str, status: str = Form(...)):
+    """
+    Update session status (planning, active, completed, cancelled)
+    
+    Args:
+        session_id: ID of the session
+        status: New status
+    
+    Returns:
+        Updated session
+    """
+    if not supabase_client:
+        raise HTTPException(status_code=503, detail="Supabase not configured")
+    
+    valid_statuses = ["planning", "active", "completed", "cancelled"]
+    if status not in valid_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid status. Must be one of: {', '.join(valid_statuses)}"
+        )
+    
+    try:
+        result = supabase_client.table("trip_sessions")\
+            .update({"status": status})\
+            .eq("id", session_id)\
+            .execute()
+        
+        if result.data:
+            print(f"✅ Updated session status to: {status}")
+            return JSONResponse(content={
+                "success": True,
+                "session": result.data[0],
+                "message": f"Session status updated to '{status}'"
+            })
+        else:
+            raise HTTPException(status_code=404, detail="Session not found")
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error updating session: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/sessions/{session_id}/add-participant")
+async def add_participant_to_session(
+    session_id: str,
+    student_id: str = Form(None),
+    roll_number: str = Form(None)
+):
+    """
+    Add a participant to a specific session
+    
+    Args:
+        session_id: ID of the session
+        student_id: Student ID (or provide roll_number)
+        roll_number: Student roll number (or provide student_id)
+    
+    Returns:
+        Added participant record
+    """
+    if not supabase_client:
+        raise HTTPException(status_code=503, detail="Supabase not configured")
+    
+    student_id = student_id.strip() if student_id else None
+    roll_number = roll_number.strip() if roll_number else None
+    
+    if not student_id and not roll_number:
+        raise HTTPException(status_code=400, detail="Either student_id or roll_number is required")
+    
+    try:
+        # Get session details to find trip_id
+        session_result = supabase_client.table("trip_sessions").select("*").eq("id", session_id).execute()
+        if not session_result.data:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        session = session_result.data[0]
+        trip_id = session["trip_id"]
+        
+        # Find student
+        if student_id:
+            student_result = supabase_client.table("students").select("*").eq("id", student_id).execute()
+        else:
+            student_result = supabase_client.table("students").select("*").eq("roll_number", roll_number).execute()
+        
+        if not student_result.data:
+            raise HTTPException(status_code=404, detail="Student not found")
+        
+        student = student_result.data[0]
+        student_id = student["id"]
+        
+        # Check if already in session
+        existing = supabase_client.table("session_attendance")\
+            .select("*")\
+            .eq("session_id", session_id)\
+            .eq("student_id", student_id)\
+            .execute()
+        
+        if existing.data:
+            raise HTTPException(status_code=400, detail="Student already added to this session")
+        
+        # Add participant to session
+        participant_data = {
+            "session_id": session_id,
+            "trip_id": trip_id,
+            "student_id": student_id,
+            "roll_number": student["roll_number"],
+            "name": student["name"],
+            "expected": True,
+            "checked_in": False
+        }
+        
+        result = supabase_client.table("session_attendance").insert(participant_data).execute()
+        
+        if result.data:
+            print(f"✅ Added {student['name']} to session")
+            return JSONResponse(content={
+                "success": True,
+                "participant": result.data[0],
+                "message": f"Added {student['name']} to session"
+            })
+        else:
+            raise HTTPException(status_code=500, detail="Failed to add participant")
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error adding participant to session: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/sessions/{session_id}/participants")
+async def get_session_participants(session_id: str, checked_in: bool = None):
+    """
+    Get all participants in a session
+    
+    Args:
+        session_id: ID of the session
+        checked_in: Optional filter (true/false)
+    
+    Returns:
+        List of participants with attendance status
+    """
+    if not supabase_client:
+        raise HTTPException(status_code=503, detail="Supabase not configured")
+    
+    try:
+        query = supabase_client.table("session_attendance")\
+            .select("*")\
+            .eq("session_id", session_id)\
+            .order("name")
+        
+        if checked_in is not None:
+            query = query.eq("checked_in", checked_in)
+        
+        results = query.execute()
+        participants = results.data if results.data else []
+        
+        # Calculate stats
+        total = len(participants)
+        checked_in_count = len([p for p in participants if p["checked_in"]])
+        missing = total - checked_in_count
+        percentage = round((checked_in_count / total * 100), 2) if total > 0 else 0
+        
+        return JSONResponse(content={
+            "success": True,
+            "participants": participants,
+            "stats": {
+                "total": total,
+                "checked_in": checked_in_count,
+                "missing": missing,
+                "percentage": percentage
+            }
+        })
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error fetching session participants: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/sessions/{session_id}/checkin")
+async def session_checkin(
+    session_id: str,
+    file: UploadFile = File(...),
+):
+    """
+    Check in a student to a session using face recognition
+    
+    Args:
+        session_id: ID of the session
+        file: Image file containing the student's face
+    
+    Returns:
+        Check-in result with student name and confidence
+    """
+    if not supabase_client:
+        raise HTTPException(status_code=503, detail="Supabase not configured")
+    
+    try:
+        # Save and process image
+        temp_path = os.path.join(UPLOAD_DIR, f"session_checkin_{datetime.now().timestamp()}.jpg")
+        
+        content = await file.read()
+        with open(temp_path, "wb") as buffer:
+            buffer.write(content)
+        
+        # Get student name from face recognition
+        try:
+            embedding_objs = DeepFace.represent(
+                img_path=temp_path,
+                model_name="Facenet",
+                detector_backend="mtcnn",
+                enforce_detection=True
+            )
+            
+            if not embedding_objs:
+                raise ValueError("No face detected")
+            
+            # Get the embedding
+            test_embedding = np.array(embedding_objs[0]["embedding"])
+            
+        except ValueError:
+            os.remove(temp_path)
+            raise HTTPException(status_code=400, detail="No face detected in image")
+        except Exception as e:
+            os.remove(temp_path)
+            raise HTTPException(status_code=400, detail=f"Face detection error: {str(e)}")
+        
+        # Load embeddings database
+        if not os.path.exists(EMBEDDINGS_DB):
+            os.remove(temp_path)
+            raise HTTPException(status_code=503, detail="Embeddings database not ready")
+        
+        with open(EMBEDDINGS_DB, 'rb') as f:
+            embeddings_db = pickle.load(f)
+        
+        # Find best match
+        best_match = None
+        best_distance = float('inf')
+        threshold = 0.4
+        
+        for person_name, person_embeddings in embeddings_db.items():
+            for emb_obj in person_embeddings:
+                emb = np.array(emb_obj['embedding'])
+                distance = np.linalg.norm(test_embedding - emb)
+                
+                if distance < best_distance:
+                    best_distance = distance
+                    best_match = (person_name, distance)
+        
+        os.remove(temp_path)
+        
+        if best_distance > threshold:
+            raise HTTPException(status_code=400, detail="No matching student found")
+        
+        student_name, distance = best_match
+        confidence = max(0, 1 - (distance / 0.45))  # Convert distance to confidence
+        
+        # Find student in session participants
+        session_result = supabase_client.table("session_attendance")\
+            .select("*")\
+            .eq("session_id", session_id)\
+            .order("name")\
+            .execute()
+        
+        # Try exact match first, then fuzzy match
+        matched_participant = None
+        
+        # Exact match
+        for p in session_result.data or []:
+            if p["name"].lower() == student_name.lower():
+                matched_participant = p
+                break
+        
+        # Fuzzy match if needed
+        if not matched_participant and session_result.data:
+            # Find closest name match
+            from difflib import SequenceMatcher
+            best_ratio = 0
+            for p in session_result.data:
+                ratio = SequenceMatcher(None, p["name"].lower(), student_name.lower()).ratio()
+                if ratio > best_ratio:
+                    best_ratio = ratio
+                    if ratio > 0.7:  # 70% match threshold
+                        matched_participant = p
+        
+        if not matched_participant:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Student '{student_name}' is not in this session's participant list"
+            )
+        
+        # Update attendance
+        supabase_client.table("session_attendance")\
+            .update({
+                "checked_in": True,
+                "check_in_time": datetime.now().isoformat(),
+                "check_in_method": "face",
+                "confidence": confidence
+            })\
+            .eq("id", matched_participant["id"])\
+            .execute()
+        
+        print(f"✅ Session check-in: {matched_participant['name']} (confidence: {confidence:.2f})")
+        
+        return JSONResponse(content={
+            "success": True,
+            "name": matched_participant["name"],
+            "confidence": confidence,
+            "message": f"Checked in: {matched_participant['name']}"
+        })
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error in session check-in: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/sessions/{session_id}/mark-manual")
+async def mark_session_manual(
+    session_id: str,
+    participant_id: str = Form(...),
+    status: bool = Form(...)
+):
+    """
+    Manually mark a student as present/absent in a session
+    
+    Args:
+        session_id: ID of the session
+        participant_id: Participant ID
+        status: True for present, False for absent
+    
+    Returns:
+        Updated participant record
+    """
+    if not supabase_client:
+        raise HTTPException(status_code=503, detail="Supabase not configured")
+    
+    try:
+        # Verify participant is in this session
+        participant = supabase_client.table("session_attendance")\
+            .select("*")\
+            .eq("id", participant_id)\
+            .eq("session_id", session_id)\
+            .execute()
+        
+        if not participant.data:
+            raise HTTPException(status_code=404, detail="Participant not found in this session")
+        
+        # Update
+        update_data = {
+            "checked_in": status,
+            "check_in_method": "manual"
+        }
+        
+        if status:
+            update_data["check_in_time"] = datetime.now().isoformat()
+        
+        result = supabase_client.table("session_attendance")\
+            .update(update_data)\
+            .eq("id", participant_id)\
+            .execute()
+        
+        status_text = "present" if status else "absent"
+        print(f"✅ Marked {participant[0]['name']} as {status_text} in session")
+        
+        return JSONResponse(content={
+            "success": True,
+            "participant": result.data[0],
+            "message": f"Marked as {status_text}"
+        })
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error marking attendance: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/sessions/{session_id}/participants/{participant_id}")
+async def remove_participant_from_session(session_id: str, participant_id: str):
+    """Remove a participant from a session"""
+    if not supabase_client:
+        raise HTTPException(status_code=503, detail="Supabase not configured")
+    
+    try:
+        # Verify it's the right session
+        participant = supabase_client.table("session_attendance")\
+            .select("*")\
+            .eq("id", participant_id)\
+            .eq("session_id", session_id)\
+            .execute()
+        
+        if not participant.data:
+            raise HTTPException(status_code=404, detail="Participant not found in this session")
+        
+        # Delete
+        supabase_client.table("session_attendance").delete().eq("id", participant_id).execute()
+        
+        print(f"✅ Removed participant from session")
+        
+        return JSONResponse(content={
+            "success": True,
+            "message": "Participant removed from session"
+        })
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error removing participant: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/sessions/{session_id}")
+async def delete_session(session_id: str):
+    """Delete a session and all its attendance records"""
+    if not supabase_client:
+        raise HTTPException(status_code=503, detail="Supabase not configured")
+    
+    try:
+        result = supabase_client.table("trip_sessions").select("*").eq("id", session_id).execute()
+        
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        session_name = result.data[0].get('name', 'Unknown')
+        
+        # Delete session (attendance records will be cascade deleted)
+        supabase_client.table("trip_sessions").delete().eq("id", session_id).execute()
+        
+        print(f"✅ Deleted session: {session_name}")
+        
+        return JSONResponse(content={
+            "success": True,
+            "message": f"Session '{session_name}' deleted successfully"
+        })
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error deleting session: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ==================== END TRIPS API ====================
 
 

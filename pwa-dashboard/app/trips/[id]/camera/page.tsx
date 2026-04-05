@@ -1,9 +1,14 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { getTripParticipants, tripCheckin } from "@/lib/api";
+import {
+  getTripParticipants,
+  tripCheckin,
+  sessionCheckin,
+  getSessions,
+} from "@/lib/api";
 import { Trip, TripStats } from "@/lib/supabase";
 import { supabase } from "@/lib/supabase";
 import {
@@ -24,9 +29,25 @@ interface QueueItem {
   timestamp: number;
 }
 
+interface SessionInfo {
+  id: string;
+  name: string;
+  session_date: string;
+  status: string;
+  stats: {
+    total: number;
+    checked_in: number;
+    missing: number;
+    percentage: number;
+  };
+}
+
 export default function TripCameraPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const tripId = params.id as string;
+  const sessionIdParam = searchParams?.get("session") || "";
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -37,14 +58,19 @@ export default function TripCameraPage() {
     missing: 0,
     percentage: 0,
   });
+  const [sessions, setSessions] = useState<SessionInfo[]>([]);
+  const [selectedSession, setSelectedSession] = useState<SessionInfo | null>(
+    null,
+  );
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [uploadQueue, setUploadQueue] = useState<QueueItem[]>([]);
   const [processing, setProcessing] = useState(false);
 
   useEffect(() => {
     loadTripData();
+    loadSessions();
     startCamera();
-    
+
     // Subscribe to real-time updates and get cleanup function
     const cleanupSubscription = subscribeToUpdates();
 
@@ -57,6 +83,20 @@ export default function TripCameraPage() {
       cleanupSubscription();
     };
   }, [tripId]);
+
+  useEffect(() => {
+    // Set selected session from URL param or first session
+    if (sessionIdParam && sessions.length > 0) {
+      const session = sessions.find((s) => s.id === sessionIdParam);
+      if (session) {
+        setSelectedSession(session);
+      } else {
+        setSelectedSession(sessions[0]);
+      }
+    } else if (sessions.length > 0) {
+      setSelectedSession(sessions[0]);
+    }
+  }, [sessions, sessionIdParam]);
 
   useEffect(() => {
     processQueue();
@@ -74,21 +114,34 @@ export default function TripCameraPage() {
     }
   };
 
+  const loadSessions = async () => {
+    try {
+      const data = await getSessions(tripId);
+      if (data.success && data.sessions) {
+        setSessions(data.sessions);
+      }
+    } catch (error) {
+      console.error("Error loading sessions:", error);
+    }
+  };
+
   const subscribeToUpdates = () => {
     const channel = supabase.channel(`trip_${tripId}_camera`);
-    
-    channel.on(
-      "postgres_changes",
-      {
-        event: "*",
-        schema: "public",
-        table: "trip_participants",
-        filter: `trip_id=eq.${tripId}`,
-      },
-      () => {
-        loadTripData();
-      }
-    ).subscribe();
+
+    channel
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "trip_participants",
+          filter: `trip_id=eq.${tripId}`,
+        },
+        () => {
+          loadTripData();
+        },
+      )
+      .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
@@ -171,13 +224,19 @@ export default function TripCameraPage() {
     try {
       const file = new File(
         [pending.blob],
-        `trip_capture_${pending.timestamp}.jpg`,
+        `capture_${pending.timestamp}.jpg`,
         {
           type: "image/jpeg",
         },
       );
 
-      const result = await tripCheckin(tripId, file);
+      let result;
+      // Use session check-in if session is selected, otherwise use trip check-in
+      if (selectedSession) {
+        result = await sessionCheckin(selectedSession.id, file);
+      } else {
+        result = await tripCheckin(tripId, file);
+      }
 
       if (result.success) {
         setUploadQueue((prev) =>
@@ -194,6 +253,9 @@ export default function TripCameraPage() {
             prev.filter((item) => item.id !== pending.id),
           );
         }, 5000);
+
+        // Reload sessions to update stats
+        loadSessions();
       } else {
         setUploadQueue((prev) =>
           prev.map((item) =>
@@ -242,6 +304,8 @@ export default function TripCameraPage() {
     (item) => item.status === "processing",
   ).length;
 
+  const displayStats = selectedSession ? selectedSession.stats : stats;
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
       <div className="max-w-7xl mx-auto px-4 py-8">
@@ -258,21 +322,49 @@ export default function TripCameraPage() {
           {trip && (
             <div>
               <h1 className="text-3xl font-bold text-white mb-2">
-                {trip.name} - Camera
+                {trip.name} - Camera{" "}
+                {selectedSession && `(${selectedSession.name})`}
               </h1>
               <div className="flex items-center gap-4 text-slate-300">
                 <span>
-                  Progress: {stats.checked_in}/{stats.total} (
-                  {stats.percentage.toFixed(1)}%)
+                  Progress: {displayStats.checked_in}/{displayStats.total} (
+                  {displayStats.percentage.toFixed(1)}%)
                 </span>
                 <span className="w-px h-4 bg-slate-600" />
                 <span className="text-red-400 font-semibold">
-                  {stats.missing} Missing
+                  {displayStats.missing} Missing
                 </span>
               </div>
             </div>
           )}
         </div>
+
+        {/* Session Selector */}
+        {sessions.length > 0 && (
+          <div className="mb-6 bg-slate-800 rounded-xl border border-slate-700 p-4">
+            <label className="text-white font-semibold mb-3 block">
+              Select Session:
+            </label>
+            <div className="flex gap-2 flex-wrap">
+              {sessions.map((session) => (
+                <button
+                  key={session.id}
+                  onClick={() => setSelectedSession(session)}
+                  className={`px-4 py-2 rounded-lg font-medium text-sm transition-all ${
+                    selectedSession?.id === session.id
+                      ? "bg-blue-600 text-white shadow-lg"
+                      : "bg-slate-700 text-slate-300 hover:bg-slate-600"
+                  }`}
+                >
+                  {session.name}
+                  <span className="ml-2 text-xs opacity-75">
+                    ({session.stats.checked_in}/{session.stats.total})
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Camera View */}
