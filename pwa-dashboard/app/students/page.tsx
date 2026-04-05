@@ -11,10 +11,15 @@ import {
   Search,
   Plus,
   Trash2,
+  Edit2,
+  User as UserIcon,
 } from "lucide-react";
 import AddStudentForm from "@/components/AddStudentForm";
 import DeleteStudentDialog from "@/components/DeleteStudentDialog";
+import UpdateStudentDialog from "@/components/UpdateStudentDialog";
 import { deleteStudent } from "@/lib/api";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 export default function StudentsPage() {
   const [students, setStudents] = useState<Student[]>([]);
@@ -22,11 +27,17 @@ export default function StudentsPage() {
   const [search, setSearch] = useState("");
   const [showAddForm, setShowAddForm] = useState(false);
   const [studentToDelete, setStudentToDelete] = useState<Student | null>(null);
+  const [studentToEdit, setStudentToEdit] = useState<Student | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [notification, setNotification] = useState<{
     type: "success" | "error";
     message: string;
   } | null>(null);
+  // Track photo load error level per student:
+  // 0 = untried, 1 = primary URL failed (try backend), 2 = all failed (show placeholder)
+  const [photoErrorLevels, setPhotoErrorLevels] = useState<
+    Record<string, number>
+  >({});
 
   useEffect(() => {
     fetchStudents();
@@ -41,6 +52,8 @@ export default function StudentsPage() {
 
       if (error) throw error;
       setStudents(data || []);
+      // Reset photo error state so photos are retried with fresh data
+      setPhotoErrorLevels({});
     } catch (error) {
       console.error("Error fetching students:", error);
     } finally {
@@ -50,6 +63,12 @@ export default function StudentsPage() {
 
   const handleAddSuccess = () => {
     showNotification("success", "Student added successfully!");
+    fetchStudents();
+  };
+
+  const handleEditSuccess = () => {
+    showNotification("success", "Student updated successfully!");
+    setStudentToEdit(null);
     fetchStudents();
   };
 
@@ -79,6 +98,43 @@ export default function StudentsPage() {
   const showNotification = (type: "success" | "error", message: string) => {
     setNotification({ type, message });
     setTimeout(() => setNotification(null), 5000);
+  };
+
+  /**
+   * Resolve a student's photo URL for display.
+   *
+   * Priority:
+   *  1. The stored photo_url (supports both full URLs and backend-relative paths like /api/students/.../photo)
+   *  2. On failure: the backend endpoint directly
+   *  3. On second failure: null → show placeholder icon
+   */
+  const resolvePhotoUrl = (student: Student): string | null => {
+    const level = photoErrorLevels[student.id] || 0;
+    const backendUrl = `${API_URL}/api/students/${student.id}/photo`;
+
+    if (!student.photo_url || student.photo_url.trim() === "") {
+      // No stored URL: use backend endpoint; if it already failed show placeholder
+      return level >= 1 ? null : backendUrl;
+    }
+
+    // Resolve relative backend paths (e.g. "/api/students/{id}/photo")
+    const primaryUrl = student.photo_url.startsWith("/")
+      ? `${API_URL}${student.photo_url}`
+      : student.photo_url;
+
+    if (level === 0) return primaryUrl;
+    if (level === 1) {
+      // Primary failed; try backend endpoint unless it was already the primary
+      return primaryUrl !== backendUrl ? backendUrl : null;
+    }
+    return null; // All attempts failed
+  };
+
+  const handlePhotoError = (studentId: string) => {
+    setPhotoErrorLevels((prev) => ({
+      ...prev,
+      [studentId]: (prev[studentId] || 0) + 1,
+    }));
   };
 
   const filteredStudents = students.filter(
@@ -127,7 +183,7 @@ export default function StudentsPage() {
         </div>
       )}
 
-      <div className="mb-6 sm:mb-8 flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
+      <div className="mb-6 sm:mb-6 flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 sm:gap-4">
         <div className="flex-1">
           <h1 className="section-title text-2xl sm:text-3xl flex items-center gap-2 sm:gap-3">
             <Users className="w-6 h-6 sm:w-8 sm:h-8 text-sky-700" />
@@ -147,7 +203,7 @@ export default function StudentsPage() {
         </button>
       </div>
 
-      <div className="mb-6">
+      <div className="mb-4 sm:mb-5">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4 sm:w-5 sm:h-5" />
           <input
@@ -160,60 +216,95 @@ export default function StudentsPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 lg:gap-5">
         {filteredStudents.map((student) => (
           <div
             key={student.id}
-            className="surface-card card-hover p-4 sm:p-6 relative group"
+            className="surface-card card-hover p-0 overflow-hidden relative group flex flex-col"
           >
-            {/* Delete Button */}
-            <button
-              onClick={() => handleDeleteClick(student)}
-              className="absolute top-3 sm:top-4 right-3 sm:right-4 p-1.5 sm:p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all opacity-0 group-hover:opacity-100"
-              title="Delete student"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
-
-            <div className="flex items-start justify-between mb-4">
-              <div className="bg-sky-100 p-2 sm:p-3 rounded-full">
-                <Users className="w-5 h-5 sm:w-6 sm:h-6 text-sky-700" />
-              </div>
-              <div>
-                {student.is_active ? (
-                  <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-green-500" />
+            {/* Photo Section */}
+            <div className="relative w-full aspect-square bg-gradient-to-br from-slate-100 to-slate-50 overflow-hidden">
+              {(() => {
+                const src = resolvePhotoUrl(student);
+                return src ? (
+                  <img
+                    src={src}
+                    alt={student.name}
+                    className="w-full h-full object-cover"
+                    onError={() => handlePhotoError(student.id)}
+                  />
                 ) : (
-                  <XCircle className="w-4 h-4 sm:w-5 sm:h-5 text-red-500" />
+                  <div className="w-full h-full flex items-center justify-center">
+                    <div className="rounded-full bg-sky-100 p-4 sm:p-5">
+                      <UserIcon className="w-12 h-12 sm:w-16 sm:h-16 text-sky-700" />
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Action Buttons Overlay */}
+              <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                <button
+                  onClick={() => setStudentToEdit(student)}
+                  className="p-2 sm:p-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+                  title="Edit student"
+                >
+                  <Edit2 className="w-4 h-4 sm:w-5 sm:h-5" />
+                </button>
+                <button
+                  onClick={() => handleDeleteClick(student)}
+                  className="p-2 sm:p-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+                  title="Delete student"
+                >
+                  <Trash2 className="w-4 h-4 sm:w-5 sm:h-5" />
+                </button>
+              </div>
+
+              {/* Status Badge */}
+              <div className="absolute top-3 right-3">
+                {student.is_active ? (
+                  <div className="flex items-center gap-1.5 bg-green-500 text-white px-2 py-1 rounded-full">
+                    <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                    <span className="text-xs font-semibold">Active</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1.5 bg-red-500 text-white px-2 py-1 rounded-full">
+                    <XCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                    <span className="text-xs font-semibold">Inactive</span>
+                  </div>
                 )}
               </div>
             </div>
 
-            <h3 className="text-base sm:text-lg font-semibold text-slate-900 mb-1">
-              {student.name}
-            </h3>
-            <p className="text-xs sm:text-sm text-slate-600 mb-4">
-              Roll: {student.roll_number}
-            </p>
-
-            {(student.class || student.section) && (
-              <p className="text-xs sm:text-sm text-slate-600 mb-4">
-                {student.class} {student.section && `- ${student.section}`}
+            {/* Info Section */}
+            <div className="p-3 sm:p-4 flex-1 flex flex-col">
+              <h3 className="text-base sm:text-lg font-semibold text-slate-900 mb-0.5 line-clamp-1">
+                {student.name}
+              </h3>
+              <p className="text-xs sm:text-sm text-slate-600 mb-3">
+                Roll: {student.roll_number}
               </p>
-            )}
 
-            <div className="space-y-2 text-xs sm:text-sm">
-              {student.email && (
-                <div className="flex items-center text-slate-600 gap-2">
-                  <Mail className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
-                  <span className="truncate">{student.email}</span>
-                </div>
+              {(student.class || student.section) && (
+                <p className="text-xs sm:text-sm text-slate-600 mb-3">
+                  {student.class} {student.section && `- ${student.section}`}
+                </p>
               )}
-              {student.phone && (
-                <div className="flex items-center text-slate-600 gap-2">
-                  <Phone className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
-                  {student.phone}
-                </div>
-              )}
+
+              <div className="space-y-1.5 text-xs sm:text-sm mt-auto">
+                {student.email && (
+                  <div className="flex items-center text-slate-600 gap-2 min-w-0">
+                    <Mail className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
+                    <span className="truncate text-xs">{student.email}</span>
+                  </div>
+                )}
+                {student.phone && (
+                  <div className="flex items-center text-slate-600 gap-2">
+                    <Phone className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
+                    <span className="truncate text-xs">{student.phone}</span>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         ))}
@@ -222,7 +313,9 @@ export default function StudentsPage() {
       {filteredStudents.length === 0 && (
         <div className="surface-muted text-center py-8 sm:py-12">
           <Users className="w-10 h-10 sm:w-12 sm:h-12 text-gray-400 mx-auto mb-3 sm:mb-4" />
-          <p className="text-sm sm:text-base text-gray-500">No students found</p>
+          <p className="text-sm sm:text-base text-gray-500">
+            No students found
+          </p>
         </div>
       )}
 
@@ -231,6 +324,14 @@ export default function StudentsPage() {
         isOpen={showAddForm}
         onClose={() => setShowAddForm(false)}
         onSuccess={handleAddSuccess}
+      />
+
+      {/* Edit Student Dialog */}
+      <UpdateStudentDialog
+        student={studentToEdit}
+        isOpen={!!studentToEdit}
+        onClose={() => setStudentToEdit(null)}
+        onSuccess={handleEditSuccess}
       />
 
       {/* Delete Confirmation Dialog */}

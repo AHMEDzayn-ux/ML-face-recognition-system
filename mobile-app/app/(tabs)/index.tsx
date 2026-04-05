@@ -28,12 +28,12 @@ export default function HomeScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const [camera, setCamera] = useState<CameraView | null>(null);
   const [showCamera, setShowCamera] = useState(false);
-  
+
   // Fire and forget - queue system
   const [uploadQueue, setUploadQueue] = useState<QueueItem[]>([]);
   const [recentResults, setRecentResults] = useState<any[]>([]);
   const [captureCount, setCaptureCount] = useState(0);
-  
+
   const processingRef = useRef(false);
 
   // Request camera permission
@@ -63,7 +63,7 @@ export default function HomeScreen() {
         // 2. Optimize image BEFORE queueing (crop & compress!)
         console.log(`📸 Optimizing image...`);
         const optimizedUri = await optimizeImage(photo.uri);
-        
+
         // 3. Add to queue immediately (non-blocking!)
         const queueId = Date.now();
         const newItem: QueueItem = {
@@ -72,15 +72,17 @@ export default function HomeScreen() {
           status: "pending",
           timestamp: queueId,
         };
-        
+
         setUploadQueue((prev) => [...prev, newItem]);
         setCaptureCount((prev) => prev + 1);
-        
+
         // 4. Haptic feedback - capture success!
         Vibration.vibrate(50);
-        
+
         // 5. Camera is IMMEDIATELY ready for next person! ✅
-        console.log(`📸 Capture #${captureCount + 1} queued! Ready for next person!`);
+        console.log(
+          `📸 Capture #${captureCount + 1} queued! Ready for next person!`,
+        );
       } else {
         Alert.alert("Error", "Failed to capture photo");
       }
@@ -102,10 +104,12 @@ export default function HomeScreen() {
         {
           compress: 0.7, // Compress to 70% quality
           format: ImageManipulator.SaveFormat.JPEG,
-        }
+        },
       );
-      
-      console.log(`✅ Image optimized: ${uri.length} → ${manipResult.uri.length} chars`);
+
+      console.log(
+        `✅ Image optimized: ${uri.length} → ${manipResult.uri.length} chars`,
+      );
       return manipResult.uri;
     } catch (error) {
       console.error("Image optimization failed:", error);
@@ -119,46 +123,50 @@ export default function HomeScreen() {
     const processQueue = async () => {
       // Only process one at a time
       if (processingRef.current) return;
-      
+
       // Find next pending item
       const pending = uploadQueue.find((item) => item.status === "pending");
       if (!pending) return;
-      
+
       // Mark as processing
       processingRef.current = true;
       setUploadQueue((prev) =>
         prev.map((item) =>
-          item.id === pending.id ? { ...item, status: "processing" } : item
-        )
+          item.id === pending.id ? { ...item, status: "processing" } : item,
+        ),
       );
-      
+
       console.log(`🔄 Processing capture #${pending.id}...`);
-      
+
       // Process in background
       const result = await sendToBackend(pending.uri, pending.id);
-      
+
       // Update queue
       setUploadQueue((prev) =>
         prev.map((item) =>
           item.id === pending.id
-            ? { ...item, status: result.success ? "completed" : "failed", result }
-            : item
-        )
+            ? {
+                ...item,
+                status: result.success ? "completed" : "failed",
+                result,
+              }
+            : item,
+        ),
       );
-      
+
       // Add to recent results
       if (result.success) {
-        setRecentResults((prev) => [result, ...prev].slice(0, 10));
+        setRecentResults((prev) => [result, ...prev].slice(0, 6));
       }
-      
+
       // Clean up old items after 5 seconds
       setTimeout(() => {
         setUploadQueue((prev) => prev.filter((item) => item.id !== pending.id));
       }, 5000);
-      
+
       processingRef.current = false;
     };
-    
+
     // Check queue every 100ms
     const interval = setInterval(processQueue, 100);
     return () => clearInterval(interval);
@@ -198,19 +206,24 @@ export default function HomeScreen() {
 
       clearTimeout(requestTimeout);
 
-      console.log(`✅ Capture #${captureId} - Response status:`, response.status);
-      
+      console.log(
+        `✅ Capture #${captureId} - Response status:`,
+        response.status,
+      );
+
       // Check if response is ok
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
-      
+
       const data = await response.json();
       console.log(`✅ Capture #${captureId} - Response data:`, data);
 
       if (data.success) {
         // Success! Return result
-        console.log(`🎉 ${data.student} recognized! (${data.confidence.toFixed(1)}%)`);
+        console.log(
+          `🎉 ${data.student} recognized! (${data.confidence.toFixed(1)}%)`,
+        );
         return {
           success: true,
           student: data.student,
@@ -289,9 +302,7 @@ export default function HomeScreen() {
               <ScrollView style={styles.resultsScroll}>
                 {recentResults.map((result, idx) => (
                   <View key={idx} style={styles.resultCard}>
-                    <Text style={styles.resultName}>
-                      ✅ {result.student}
-                    </Text>
+                    <Text style={styles.resultName}>✅ {result.student}</Text>
                     <Text style={styles.resultTime}>{result.timestamp}</Text>
                     <Text style={styles.resultConfidence}>
                       {result.confidence.toFixed(1)}%
@@ -325,10 +336,7 @@ export default function HomeScreen() {
         )}
 
         {/* Capture button - NEVER DISABLED! */}
-        <TouchableOpacity
-          style={styles.captureButton}
-          onPress={capturePhoto}
-        >
+        <TouchableOpacity style={styles.captureButton} onPress={capturePhoto}>
           <Text style={styles.captureButtonText}>
             📸 Capture #{captureCount + 1}
           </Text>
@@ -387,116 +395,116 @@ const styles = StyleSheet.create({
   },
   header: {
     backgroundColor: "rgba(0,0,0,0.7)",
-    padding: 20,
-    paddingTop: 50,
+    padding: 16,
+    paddingTop: 40,
   },
   headerText: {
     color: "#fff",
-    fontSize: 18,
+    fontSize: 16,
     textAlign: "center",
     fontWeight: "bold",
   },
   queueText: {
     color: "#4ecca3",
-    fontSize: 14,
+    fontSize: 13,
     textAlign: "center",
-    marginTop: 5,
+    marginTop: 4,
   },
   faceFrame: {
-    width: 250,
-    height: 250,
-    borderWidth: 3,
+    width: 220,
+    height: 220,
+    borderWidth: 2,
     borderColor: "#4ecca3",
-    borderRadius: 125,
+    borderRadius: 110,
     alignSelf: "center",
-    marginTop: 50,
+    marginTop: 40,
   },
   resultsPanel: {
     position: "absolute",
-    right: 10,
-    top: 100,
-    width: 180,
-    maxHeight: 400,
+    right: 8,
+    top: 90,
+    width: 160,
+    maxHeight: 320,
     backgroundColor: "rgba(0, 0, 0, 0.85)",
-    borderRadius: 10,
-    padding: 10,
+    borderRadius: 8,
+    padding: 8,
   },
   resultsPanelTitle: {
     color: "#4ecca3",
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "bold",
-    marginBottom: 10,
+    marginBottom: 8,
     textAlign: "center",
   },
   resultsScroll: {
-    maxHeight: 350,
+    maxHeight: 280,
   },
   resultCard: {
     backgroundColor: "rgba(78, 204, 163, 0.2)",
-    padding: 8,
-    borderRadius: 5,
-    marginBottom: 8,
-    borderLeftWidth: 3,
+    padding: 6,
+    borderRadius: 4,
+    marginBottom: 6,
+    borderLeftWidth: 2,
     borderLeftColor: "#4ecca3",
   },
   resultName: {
     color: "#fff",
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: "bold",
   },
   resultTime: {
     color: "#aaa",
-    fontSize: 11,
-    marginTop: 2,
+    fontSize: 10,
+    marginTop: 1,
   },
   resultConfidence: {
     color: "#4ecca3",
-    fontSize: 12,
-    marginTop: 2,
+    fontSize: 11,
+    marginTop: 1,
   },
   controls: {
     backgroundColor: "#1a1a2e",
-    padding: 20,
-    paddingBottom: 40,
+    padding: 16,
+    paddingBottom: 32,
   },
   queueStatus: {
     flexDirection: "row",
     justifyContent: "center",
-    marginBottom: 10,
-    gap: 10,
+    marginBottom: 8,
+    gap: 8,
   },
   queueItem: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "rgba(78, 204, 163, 0.2)",
-    padding: 8,
-    borderRadius: 5,
-    gap: 5,
+    padding: 6,
+    borderRadius: 4,
+    gap: 4,
   },
   queueItemText: {
     color: "#4ecca3",
-    fontSize: 12,
+    fontSize: 11,
   },
   captureButton: {
     backgroundColor: "#4ecca3",
-    padding: 20,
-    borderRadius: 10,
-    marginBottom: 10,
+    padding: 16,
+    borderRadius: 8,
+    marginBottom: 8,
   },
   captureButtonText: {
     color: "#fff",
-    fontSize: 18,
+    fontSize: 16,
     textAlign: "center",
     fontWeight: "bold",
   },
   backButton: {
     backgroundColor: "#666",
-    padding: 15,
-    borderRadius: 10,
+    padding: 12,
+    borderRadius: 8,
   },
   backButtonText: {
     color: "#fff",
-    fontSize: 16,
+    fontSize: 15,
     textAlign: "center",
   },
 });

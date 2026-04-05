@@ -81,8 +81,8 @@ def identify_face(image_path, database_file="embeddings.pkl", threshold=0.4, min
     try:
         test_embedding_objs = DeepFace.represent(
             img_path=image_path,
-            model_name="Facenet",
-            detector_backend="mtcnn",
+            model_name="ArcFace",
+            detector_backend="retinaface",
             enforce_detection=True
         )
         test_embedding = test_embedding_objs[0]["embedding"]
