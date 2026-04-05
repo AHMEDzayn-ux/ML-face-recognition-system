@@ -42,14 +42,16 @@ def calculate_cosine_distance(embedding1, embedding2):
     return distance
 
 
-def identify_face(image_path, database_file="embeddings.pkl", threshold=0.4):
+def identify_face(image_path, database_file="embeddings.pkl", threshold=0.4, min_confidence=60.0, min_distance_gap=0.05):
     """
-    Identify a person from an image
+    Identify a person from an image with enhanced validation
     
     Args:
         image_path: Path to the test image
         database_file: Path to embeddings database
-        threshold: Maximum distance for a match (lower = stricter)
+        threshold: Maximum distance for a match (default 0.3 - stricter)
+        min_confidence: Minimum confidence % required (default 70%)
+        min_distance_gap: Minimum gap between 1st and 2nd match (default 0.1)
     
     Returns:
         Dictionary with identification results
@@ -139,31 +141,100 @@ def identify_face(image_path, database_file="embeddings.pkl", threshold=0.4):
     print("🎯 RESULT")
     print("=" * 60)
     
+    # Calculate confidence
     if best_distance < threshold:
         confidence = (1 - (best_distance / threshold)) * 100
-        print(f"✅ IDENTIFIED: {best_match}")
-        print(f"   Distance: {best_distance:.4f} (threshold: {threshold})")
-        print(f"   Confidence: {confidence:.1f}%")
-        
-        result = {
-            'identified': True,
-            'name': best_match,
-            'distance': best_distance,
-            'confidence': confidence,
-            'threshold': threshold,
-            'all_matches': all_results
-        }
     else:
+        confidence = 0.0
+    
+    # VALIDATION CHECK 1: Distance threshold
+    if best_distance >= threshold:
         print(f"❌ UNKNOWN PERSON")
         print(f"   Closest match: {best_match} (distance: {best_distance:.4f})")
         print(f"   Threshold: {threshold}")
-        print(f"   No match found above confidence threshold")
+        print(f"   ⚠️  Distance too high - no confident match")
         
         result = {
             'identified': False,
             'name': None,
             'closest_match': best_match,
             'distance': best_distance,
+            'confidence': confidence,
+            'threshold': threshold,
+            'reason': 'distance_too_high',
+            'all_matches': all_results
+        }
+    
+    # VALIDATION CHECK 2: Minimum confidence
+    elif confidence < min_confidence:
+        print(f"❌ UNKNOWN PERSON")
+        print(f"   Closest match: {best_match} (distance: {best_distance:.4f})")
+        print(f"   Confidence: {confidence:.1f}% (minimum: {min_confidence}%)")
+        print(f"   ⚠️  Confidence too low - match not reliable")
+        
+        result = {
+            'identified': False,
+            'name': None,
+            'closest_match': best_match,
+            'distance': best_distance,
+            'confidence': confidence,
+            'threshold': threshold,
+            'reason': 'confidence_too_low',
+            'all_matches': all_results
+        }
+    
+    # VALIDATION CHECK 3: Distance gap between 1st and 2nd match
+    elif len(all_results) >= 2:
+        second_distance = all_results[1]['distance']
+        distance_gap = second_distance - best_distance
+        
+        if distance_gap < min_distance_gap:
+            print(f"❌ AMBIGUOUS MATCH")
+            print(f"   1st match: {best_match} (distance: {best_distance:.4f})")
+            print(f"   2nd match: {all_results[1]['name']} (distance: {second_distance:.4f})")
+            print(f"   Distance gap: {distance_gap:.4f} (minimum: {min_distance_gap})")
+            print(f"   ⚠️  Two people are too similar - cannot distinguish reliably")
+            
+            result = {
+                'identified': False,
+                'name': None,
+                'closest_match': best_match,
+                'second_match': all_results[1]['name'],
+                'distance': best_distance,
+                'confidence': confidence,
+                'distance_gap': distance_gap,
+                'threshold': threshold,
+                'reason': 'ambiguous_match',
+                'all_matches': all_results
+            }
+        else:
+            # All validations passed!
+            print(f"✅ IDENTIFIED: {best_match}")
+            print(f"   Distance: {best_distance:.4f} (threshold: {threshold})")
+            print(f"   Confidence: {confidence:.1f}%")
+            print(f"   Distance gap from 2nd: {distance_gap:.4f} ✓")
+            
+            result = {
+                'identified': True,
+                'name': best_match,
+                'distance': best_distance,
+                'confidence': confidence,
+                'threshold': threshold,
+                'distance_gap': distance_gap,
+                'all_matches': all_results
+            }
+    else:
+        # Only one person in database - simpler validation
+        print(f"✅ IDENTIFIED: {best_match}")
+        print(f"   Distance: {best_distance:.4f} (threshold: {threshold})")
+        print(f"   Confidence: {confidence:.1f}%")
+        print(f"   Note: Only one person in database")
+        
+        result = {
+            'identified': True,
+            'name': best_match,
+            'distance': best_distance,
+            'confidence': confidence,
             'threshold': threshold,
             'all_matches': all_results
         }
@@ -183,7 +254,7 @@ if __name__ == "__main__":
         print("\nUsage: python identify_face.py <test_image.jpg> [threshold]")
         print("\nExample:")
         print("  python identify_face.py test_images/unknown.jpg")
-        print("  python identify_face.py test_images/unknown.jpg 0.3")
+        print("  python identify_face.py test_images/unknown.jpg 0.4")
         print("\nOptional threshold (default: 0.4):")
         print("  - Lower (0.3): Stricter matching, fewer false positives")
         print("  - Higher (0.5): More lenient, may have false positives")

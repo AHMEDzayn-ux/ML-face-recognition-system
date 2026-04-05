@@ -41,3 +41,44 @@ export interface AttendanceSummary {
   total_present: number;
   attendance_rate: number;
 }
+
+export interface Trip {
+  id: string;
+  name: string;
+  description: string | null;
+  trip_date: string;
+  departure_time: string | null;
+  status: 'planning' | 'active' | 'completed' | 'cancelled';
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TripParticipant {
+  id: string;
+  trip_id: string;
+  student_id: string;
+  roll_number: string;
+  name: string;
+  expected: boolean;
+  checked_in: boolean;
+  check_in_time: string | null;
+  check_in_method: 'face' | 'manual' | 'bulk' | null;
+  checked_in_by: string | null;
+  confidence: number | null;
+  photo_url: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TripStats {
+  total: number;
+  checked_in: number;
+  missing: number;
+  percentage: number;
+}
+
+export interface TripWithStats extends Trip {
+  stats?: TripStats;
+}

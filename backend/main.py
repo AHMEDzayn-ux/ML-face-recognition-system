@@ -63,7 +63,7 @@ EMBEDDINGS_DB = "embeddings.pkl"
 ATTENDANCE_LOG = "attendance.json"
 UPLOAD_DIR = "uploads"
 KNOWN_FACES_DIR = "known_faces"
-THRESHOLD = 0.4
+THRESHOLD = 0.4  # Face matching threshold (original)
 
 # Create necessary directories
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -191,7 +191,7 @@ def calculate_cosine_distance(embedding1, embedding2):
 
 
 def identify_from_embedding(test_embedding, threshold=THRESHOLD):
-    """Identify person from embedding"""
+    """Identify person from embedding (original simple logic)"""
     if not embeddings_db or len(embeddings_db) == 0:
         return None
     
@@ -480,18 +480,45 @@ async def mark_attendance(file: UploadFile = File(...)):
 
 @app.get("/students")
 async def get_students():
-    """Get list of all enrolled students"""
-    if not embeddings_db:
-        return {"students": []}
+    """Get list of all enrolled students from Supabase"""
+    if not supabase_client:
+        # Fallback to old embedding-based list if Supabase not configured
+        if not embeddings_db:
+            return {"students": []}
+        
+        students = []
+        for name, embeddings in embeddings_db.items():
+            students.append({
+                "name": name,
+                "photos": len(embeddings)
+            })
+        return {"students": students, "total": len(students)}
     
-    students = []
-    for name, embeddings in embeddings_db.items():
-        students.append({
-            "name": name,
-            "photos": len(embeddings)
-        })
-    
-    return {"students": students, "total": len(students)}
+    try:
+        # Fetch from Supabase students table
+        result = supabase_client.table("students").select("*").eq("is_active", True).order("roll_number").execute()
+        
+        students = result.data if result.data else []
+        
+        print(f"✅ Fetched {len(students)} students from Supabase")
+        if students:
+            print(f"   First student: {students[0]}")  # Debug log
+        
+        return {"students": students, "total": len(students)}
+        
+    except Exception as e:
+        print(f"❌ Error fetching students: {e}")
+        # Fallback to embedding-based list
+        if not embeddings_db:
+            return {"students": []}
+        
+        students = []
+        for name, embeddings in embeddings_db.items():
+            students.append({
+                "name": name,
+                "photos": len(embeddings)
+            })
+        return {"students": students, "total": len(students)}
 
 
 @app.post("/api/students")
@@ -899,6 +926,632 @@ async def get_all_attendance():
             return {"attendance": [], "total": 0}
     
     return {"attendance": all_attendance, "total": len(all_attendance)}
+
+
+# ==================== TRIPS API ENDPOINTS ====================
+
+@app.post("/api/trips")
+async def create_trip(
+    name: str = Form(...),
+    description: str = Form(None),
+    trip_date: str = Form(...),
+    departure_time: str = Form(None),
+    created_by: str = Form(None)
+):
+    """
+    Create a new trip session
+    
+    Required: name, trip_date (YYYY-MM-DD)
+    Optional: description, departure_time (HH:MM:SS), created_by
+    """
+    if not supabase_client:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+    
+    try:
+        # Insert trip into database
+        trip_data = {
+            "name": name,
+            "description": description,
+            "trip_date": trip_date,
+            "departure_time": departure_time,
+            "status": "planning",
+            "created_by": created_by
+        }
+        
+        result = supabase_client.table("trips").insert(trip_data).execute()
+        
+        if result.data:
+            return JSONResponse(content={
+                "success": True,
+                "trip": result.data[0]
+            })
+        else:
+            raise HTTPException(status_code=500, detail="Failed to create trip")
+            
+    except Exception as e:
+        print(f"Error creating trip: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/trips")
+async def get_trips(status: Optional[str] = None):
+    """
+    Get all trips, optionally filtered by status
+    
+    status: planning, active, completed, cancelled
+    """
+    if not supabase_client:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+    
+    try:
+        query = supabase_client.table("trips").select("*").order("trip_date", desc=True)
+        
+        if status:
+            query = query.eq("status", status)
+        
+        result = query.execute()
+        
+        return JSONResponse(content={
+            "success": True,
+            "trips": result.data,
+            "total": len(result.data)
+        })
+        
+    except Exception as e:
+        print(f"Error fetching trips: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/trips/{trip_id}")
+async def get_trip(trip_id: str):
+    """Get trip details by ID"""
+    if not supabase_client:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+    
+    try:
+        # Get trip
+        trip_result = supabase_client.table("trips").select("*").eq("id", trip_id).execute()
+        
+        if not trip_result.data:
+            raise HTTPException(status_code=404, detail="Trip not found")
+        
+        # Get participant count
+        participants_result = supabase_client.table("trip_participants").select("*").eq("trip_id", trip_id).execute()
+        
+        trip = trip_result.data[0]
+        participants = participants_result.data
+        
+        checked_in_count = len([p for p in participants if p.get('checked_in')])
+        
+        return JSONResponse(content={
+            "success": True,
+            "trip": trip,
+            "stats": {
+                "total": len(participants),
+                "checked_in": checked_in_count,
+                "missing": len(participants) - checked_in_count,
+                "percentage": (checked_in_count / len(participants) * 100) if participants else 0
+            }
+        })
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error fetching trip: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/trips/{trip_id}/upload-csv")
+async def upload_trip_csv(trip_id: str, file: UploadFile = File(...)):
+    """
+    Upload CSV file with trip participants
+    
+    CSV format: roll_number,name,phone (header optional)
+    Minimum required: roll_number column
+    """
+    if not supabase_client:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+    
+    try:
+        # Verify trip exists
+        trip_result = supabase_client.table("trips").select("*").eq("id", trip_id).execute()
+        if not trip_result.data:
+            raise HTTPException(status_code=404, detail="Trip not found")
+        
+        # Read CSV content
+        content = await file.read()
+        lines = content.decode('utf-8').splitlines()
+        
+        if not lines:
+            raise HTTPException(status_code=400, detail="Empty CSV file")
+        
+        # Parse CSV
+        import csv
+        import io
+        csv_reader = csv.DictReader(io.StringIO(content.decode('utf-8')))
+        
+        # Check if header exists, fallback to first column as roll_number
+        if csv_reader.fieldnames is None or 'roll_number' not in csv_reader.fieldnames:
+            # No header, treat first column as roll_number
+            csv_reader = csv.reader(io.StringIO(content.decode('utf-8')))
+            rows = [{"roll_number": row[0].strip()} for row in csv_reader if row]
+        else:
+            rows = list(csv_reader)
+        
+        # Process each row
+        imported = 0
+        not_found = []
+        duplicates = 0
+        
+        for row in rows:
+            roll_number = row.get('roll_number', '').strip()
+            if not roll_number:
+                continue
+            
+            # Find student in database
+            student_result = supabase_client.table("students").select("*").eq("roll_number", roll_number).execute()
+            
+            if not student_result.data:
+                not_found.append(roll_number)
+                continue
+            
+            student = student_result.data[0]
+            
+            # Check if already added to trip
+            existing = supabase_client.table("trip_participants").select("*").eq("trip_id", trip_id).eq("student_id", student['id']).execute()
+            
+            if existing.data:
+                duplicates += 1
+                continue
+            
+            # Add to trip_participants
+            participant_data = {
+                "trip_id": trip_id,
+                "student_id": student['id'],
+                "roll_number": student['roll_number'],
+                "name": student['name'],
+                "expected": True,
+                "checked_in": False
+            }
+            
+            supabase_client.table("trip_participants").insert(participant_data).execute()
+            imported += 1
+        
+        return JSONResponse(content={
+            "success": True,
+            "imported": imported,
+            "not_found": not_found,
+            "duplicates": duplicates,
+            "total_processed": len(rows)
+        })
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error uploading CSV: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/trips/{trip_id}/participants")
+async def get_trip_participants(trip_id: str, checked_in: Optional[bool] = None):
+    """
+    Get participants for a trip
+    
+    checked_in: true (only checked in), false (only missing), null (all)
+    """
+    if not supabase_client:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+    
+    try:
+        # Get trip
+        trip_result = supabase_client.table("trips").select("*").eq("id", trip_id).execute()
+        
+        if not trip_result.data:
+            raise HTTPException(status_code=404, detail="Trip not found")
+        
+        # Get participants
+        query = supabase_client.table("trip_participants").select("*").eq("trip_id", trip_id)
+        
+        if checked_in is not None:
+            query = query.eq("checked_in", checked_in)
+        
+        result = query.order("name").execute()
+        participants = result.data
+        
+        # Calculate stats
+        all_participants = supabase_client.table("trip_participants").select("*").eq("trip_id", trip_id).execute().data
+        checked_in_count = len([p for p in all_participants if p.get('checked_in')])
+        
+        return JSONResponse(content={
+            "success": True,
+            "trip": trip_result.data[0],
+            "stats": {
+                "total": len(all_participants),
+                "checked_in": checked_in_count,
+                "missing": len(all_participants) - checked_in_count,
+                "percentage": (checked_in_count / len(all_participants) * 100) if all_participants else 0
+            },
+            "participants": participants
+        })
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error fetching participants: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/trips/{trip_id}/checkin")
+async def trip_checkin(trip_id: str, image: UploadFile = File(...)):
+    """
+    Check in a student for a trip using face recognition
+    
+    Optimized: Only compares against trip participants for faster recognition
+    """
+    if not supabase_client:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+    
+    try:
+        # Get trip participants
+        participants_result = supabase_client.table("trip_participants").select("*, students(*)").eq("trip_id", trip_id).eq("checked_in", False).execute()
+        
+        if not participants_result.data:
+            return JSONResponse(content={
+                "success": False,
+                "message": "All participants already checked in or no participants found"
+            })
+        
+        # Save uploaded image
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        upload_path = os.path.join(UPLOAD_DIR, f"trip_{trip_id}_{timestamp}.jpg")
+
+        with open(upload_path, "wb") as buffer:
+            shutil.copyfileobj(image.file, buffer)
+
+        # Preprocess image
+        img = cv2.imread(upload_path)
+        if img is None:
+            return JSONResponse(content={
+                "success": False,
+                "message": "Could not read captured image"
+            })
+
+        img = preprocess_for_recognition(img)
+        cv2.imwrite(upload_path, img)
+        final_path = upload_path
+        
+        # Extract embedding from uploaded image
+        try:
+            test_embedding = DeepFace.represent(
+                img_path=final_path,
+                model_name="Facenet",
+                detector_backend="retinaface",
+                enforce_detection=True
+            )[0]["embedding"]
+        except Exception as e:
+            try:
+                if os.path.exists(upload_path):
+                    os.remove(upload_path)
+            except:
+                pass
+            raise HTTPException(status_code=400, detail=f"No face detected in image: {str(e)}")
+        
+        # Build filtered embeddings dict (only trip participants)
+        trip_embeddings = {}
+        for participant in participants_result.data:
+            student_name = participant.get('name')
+            if student_name and student_name in embeddings_db:
+                trip_embeddings[student_name] = embeddings_db[student_name]
+        
+        # Identify from filtered embeddings
+        best_match = None
+        best_distance = float('inf')
+
+        for person_name, person_embeddings in trip_embeddings.items():
+            for known_embedding_data in person_embeddings:
+                known_embedding = known_embedding_data['embedding']
+
+                # Use cosine distance (same as other endpoints)
+                distance = calculate_cosine_distance(test_embedding, known_embedding)
+
+                if distance < best_distance:
+                    best_distance = distance
+                    best_match = person_name
+        
+        # Check if match is within threshold
+        if best_match and best_distance < THRESHOLD:
+            confidence = (1 - (best_distance / THRESHOLD)) * 100
+            
+            # Find participant record
+            participant = next((p for p in participants_result.data if p.get('name') == best_match), None)
+            
+            if participant:
+                # Update participant as checked in
+                update_data = {
+                    "checked_in": True,
+                    "check_in_time": datetime.now().isoformat(),
+                    "check_in_method": "face",
+                    "confidence": confidence,
+                    "photo_url": upload_path
+                }
+
+                supabase_client.table("trip_participants").update(update_data).eq("id", participant['id']).execute()
+
+                # Clean up temporary file
+                try:
+                    if os.path.exists(upload_path):
+                        os.remove(upload_path)
+                except:
+                    pass
+
+                return JSONResponse(content={
+                    "success": True,
+                    "participant": {
+                        "id": participant['id'],
+                        "roll_number": participant['roll_number'],
+                        "name": participant['name'],
+                        "confidence": round(confidence, 2),
+                        "check_in_time": update_data['check_in_time']
+                    }
+                })
+
+        # No match found
+        try:
+            if os.path.exists(upload_path):
+                os.remove(upload_path)
+        except:
+            pass
+        
+        return JSONResponse(content={
+            "success": False,
+            "message": "Student not recognized or not in trip participant list",
+            "closest_match": best_match,
+            "distance": float(best_distance)
+        })
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error during trip check-in: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/trips/{trip_id}/mark-manual")
+async def mark_manual_checkin(
+    trip_id: str,
+    participant_id: str = Form(None),
+    roll_number: str = Form(None),
+    notes: str = Form(None)
+):
+    """
+    Manually check in a student (no face recognition)
+    
+    Provide either participant_id or roll_number
+    """
+    if not supabase_client:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+    
+    if not participant_id and not roll_number:
+        raise HTTPException(status_code=400, detail="Either participant_id or roll_number is required")
+    
+    try:
+        # Find participant
+        if participant_id:
+            query = supabase_client.table("trip_participants").select("*").eq("id", participant_id).eq("trip_id", trip_id)
+        else:
+            query = supabase_client.table("trip_participants").select("*").eq("roll_number", roll_number).eq("trip_id", trip_id)
+        
+        result = query.execute()
+        
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Participant not found in this trip")
+        
+        participant = result.data[0]
+        
+        # Update as checked in
+        update_data = {
+            "checked_in": True,
+            "check_in_time": datetime.now().isoformat(),
+            "check_in_method": "manual",
+            "notes": notes or "Manual check-in"
+        }
+        
+        supabase_client.table("trip_participants").update(update_data).eq("id", participant['id']).execute()
+        
+        return JSONResponse(content={
+            "success": True,
+            "participant": {
+                **participant,
+                **update_data
+            }
+        })
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error during manual check-in: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.patch("/api/trips/{trip_id}/status")
+async def update_trip_status(trip_id: str, status: str = Form(...)):
+    """
+    Update trip status
+    
+    status: planning, active, completed, cancelled
+    """
+    if not supabase_client:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+    
+    valid_statuses = ['planning', 'active', 'completed', 'cancelled']
+    if status not in valid_statuses:
+        raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {', '.join(valid_statuses)}")
+    
+    try:
+        result = supabase_client.table("trips").update({"status": status}).eq("id", trip_id).execute()
+        
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Trip not found")
+        
+        return JSONResponse(content={
+            "success": True,
+            "trip": result.data[0]
+        })
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error updating trip status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/trips/{trip_id}/add-participant")
+async def add_participant_to_trip(
+    trip_id: str,
+    student_id: str = Form(None),
+    roll_number: str = Form(None)
+):
+    """
+    Add a single participant to a trip
+    
+    Provide either student_id or roll_number
+    """
+    if not supabase_client:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+    
+    # DETAILED LOGGING
+    print("="*60)
+    print(f"ADD PARTICIPANT REQUEST:")
+    print(f"  trip_id: {trip_id}")
+    print(f"  student_id (raw): {repr(student_id)}")
+    print(f"  roll_number (raw): {repr(roll_number)}")
+    print(f"  student_id type: {type(student_id)}")
+    print(f"  roll_number type: {type(roll_number)}")
+    
+    # Clean up empty strings to None
+    student_id = student_id.strip() if student_id else None
+    roll_number = roll_number.strip() if roll_number else None
+    
+    print(f"  student_id (cleaned): {repr(student_id)}")
+    print(f"  roll_number (cleaned): {repr(roll_number)}")
+    print("="*60)
+    
+    if not student_id and not roll_number:
+        raise HTTPException(status_code=400, detail="Either student_id or roll_number is required")
+    
+    try:
+        # Verify trip exists
+        trip_result = supabase_client.table("trips").select("*").eq("id", trip_id).execute()
+        if not trip_result.data:
+            raise HTTPException(status_code=404, detail="Trip not found")
+        
+        # Find student
+        if student_id:
+            student_result = supabase_client.table("students").select("*").eq("id", student_id).execute()
+        else:
+            student_result = supabase_client.table("students").select("*").eq("roll_number", roll_number).execute()
+        
+        if not student_result.data:
+            raise HTTPException(status_code=404, detail="Student not found")
+        
+        student = student_result.data[0]
+        
+        # Check if already in trip
+        existing = supabase_client.table("trip_participants").select("*").eq("trip_id", trip_id).eq("student_id", student['id']).execute()
+        
+        if existing.data:
+            raise HTTPException(status_code=400, detail="Student already in this trip")
+        
+        # Add to trip_participants
+        participant_data = {
+            "trip_id": trip_id,
+            "student_id": student['id'],
+            "roll_number": student['roll_number'],
+            "name": student['name'],
+            "expected": True,
+            "checked_in": False
+        }
+        
+        result = supabase_client.table("trip_participants").insert(participant_data).execute()
+        
+        return JSONResponse(content={
+            "success": True,
+            "participant": result.data[0]
+        })
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error adding participant: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/trips/{trip_id}/participants/{participant_id}")
+async def remove_participant_from_trip(trip_id: str, participant_id: str):
+    """Remove a participant from a trip"""
+    if not supabase_client:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+    
+    try:
+        # Verify it's the right trip
+        participant = supabase_client.table("trip_participants").select("*").eq("id", participant_id).eq("trip_id", trip_id).execute()
+        
+        if not participant.data:
+            raise HTTPException(status_code=404, detail="Participant not found in this trip")
+        
+        # Delete
+        supabase_client.table("trip_participants").delete().eq("id", participant_id).execute()
+        
+        return JSONResponse(content={
+            "success": True,
+            "message": "Participant removed from trip"
+        })
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error removing participant: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/trips/{trip_id}")
+async def delete_trip(trip_id: str):
+    """
+    Delete a trip and all its participants
+    
+    This is a CASCADE delete - all participants will be removed automatically
+    """
+    if not supabase_client:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+    
+    try:
+        # Verify trip exists
+        trip_result = supabase_client.table("trips").select("*").eq("id", trip_id).execute()
+        
+        if not trip_result.data:
+            raise HTTPException(status_code=404, detail="Trip not found")
+        
+        trip_name = trip_result.data[0].get('name', 'Unknown')
+        
+        # Delete trip (participants will be cascade deleted automatically)
+        supabase_client.table("trips").delete().eq("id", trip_id).execute()
+        
+        print(f"✅ Deleted trip: {trip_name} (ID: {trip_id})")
+        
+        return JSONResponse(content={
+            "success": True,
+            "message": f"Trip '{trip_name}' deleted successfully",
+            "trip_id": trip_id
+        })
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error deleting trip: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== END TRIPS API ====================
 
 
 if __name__ == "__main__":

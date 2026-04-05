@@ -2,7 +2,15 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Camera, Users, BarChart3, FileText, ScanLine } from "lucide-react";
+import {
+  Home,
+  Camera,
+  Users,
+  BarChart3,
+  FileText,
+  ScanLine,
+  Bus,
+} from "lucide-react";
 
 export default function Navbar() {
   const pathname = usePathname();
@@ -10,6 +18,7 @@ export default function Navbar() {
   const links = [
     { href: "/", label: "Dashboard", icon: Home },
     { href: "/camera", label: "Camera", icon: Camera },
+    { href: "/trips", label: "Trips", icon: Bus },
     { href: "/students", label: "Students", icon: Users },
     { href: "/analytics", label: "Analytics", icon: BarChart3 },
     { href: "/reports", label: "Reports", icon: FileText },
