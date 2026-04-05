@@ -19,6 +19,8 @@ import DeleteStudentDialog from "@/components/DeleteStudentDialog";
 import UpdateStudentDialog from "@/components/UpdateStudentDialog";
 import { deleteStudent } from "@/lib/api";
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
 export default function StudentsPage() {
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
@@ -31,6 +33,11 @@ export default function StudentsPage() {
     type: "success" | "error";
     message: string;
   } | null>(null);
+  // Track photo load error level per student:
+  // 0 = untried, 1 = primary URL failed (try backend), 2 = all failed (show placeholder)
+  const [photoErrorLevels, setPhotoErrorLevels] = useState<
+    Record<string, number>
+  >({});
 
   useEffect(() => {
     fetchStudents();
@@ -45,6 +52,8 @@ export default function StudentsPage() {
 
       if (error) throw error;
       setStudents(data || []);
+      // Reset photo error state so photos are retried with fresh data
+      setPhotoErrorLevels({});
     } catch (error) {
       console.error("Error fetching students:", error);
     } finally {
@@ -89,6 +98,43 @@ export default function StudentsPage() {
   const showNotification = (type: "success" | "error", message: string) => {
     setNotification({ type, message });
     setTimeout(() => setNotification(null), 5000);
+  };
+
+  /**
+   * Resolve a student's photo URL for display.
+   *
+   * Priority:
+   *  1. The stored photo_url (supports both full URLs and backend-relative paths like /api/students/.../photo)
+   *  2. On failure: the backend endpoint directly
+   *  3. On second failure: null → show placeholder icon
+   */
+  const resolvePhotoUrl = (student: Student): string | null => {
+    const level = photoErrorLevels[student.id] || 0;
+    const backendUrl = `${API_URL}/api/students/${student.id}/photo`;
+
+    if (!student.photo_url || student.photo_url.trim() === "") {
+      // No stored URL: use backend endpoint; if it already failed show placeholder
+      return level >= 1 ? null : backendUrl;
+    }
+
+    // Resolve relative backend paths (e.g. "/api/students/{id}/photo")
+    const primaryUrl = student.photo_url.startsWith("/")
+      ? `${API_URL}${student.photo_url}`
+      : student.photo_url;
+
+    if (level === 0) return primaryUrl;
+    if (level === 1) {
+      // Primary failed; try backend endpoint unless it was already the primary
+      return primaryUrl !== backendUrl ? backendUrl : null;
+    }
+    return null; // All attempts failed
+  };
+
+  const handlePhotoError = (studentId: string) => {
+    setPhotoErrorLevels((prev) => ({
+      ...prev,
+      [studentId]: (prev[studentId] || 0) + 1,
+    }));
   };
 
   const filteredStudents = students.filter(
@@ -178,19 +224,23 @@ export default function StudentsPage() {
           >
             {/* Photo Section */}
             <div className="relative w-full aspect-square bg-gradient-to-br from-slate-100 to-slate-50 overflow-hidden">
-              {student.photo_url ? (
-                <img
-                  src={student.photo_url}
-                  alt={student.name}
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center">
-                  <div className="rounded-full bg-sky-100 p-4 sm:p-5">
-                    <UserIcon className="w-12 h-12 sm:w-16 sm:h-16 text-sky-700" />
+              {(() => {
+                const src = resolvePhotoUrl(student);
+                return src ? (
+                  <img
+                    src={src}
+                    alt={student.name}
+                    className="w-full h-full object-cover"
+                    onError={() => handlePhotoError(student.id)}
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <div className="rounded-full bg-sky-100 p-4 sm:p-5">
+                      <UserIcon className="w-12 h-12 sm:w-16 sm:h-16 text-sky-700" />
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               {/* Action Buttons Overlay */}
               <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">

@@ -10,7 +10,7 @@ os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'  # Disable oneDNN custom operations
 
 from fastapi import FastAPI, File, UploadFile, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from typing import List, Optional
 import uvicorn
 import pickle
@@ -794,36 +794,32 @@ async def upload_student_photos(
         
         print(f"✅ Successfully uploaded {saved_count} photos for {student_name}")
         
-        # Upload first photo to Supabase Storage and save URL to database
+        # Always set photo_url to the backend endpoint so it is reliably accessible
+        try:
+            backend_photo_url = f"/api/students/{student_id}/photo"
+            supabase_client.table('students').update({
+                'photo_url': backend_photo_url
+            }).eq('id', student_id).execute()
+            first_photo_url = backend_photo_url
+            print(f"✅ Set photo_url to backend endpoint: {backend_photo_url}")
+        except Exception as e:
+            print(f"⚠️  Warning: Could not update photo_url in database: {e}")
+        
+        # Also try uploading to Supabase Storage for redundancy
         try:
             if first_photo_content:
-                import mimetypes
-                file_ext = ".jpg"
                 file_name = f"{student_id}-{student_name.replace(' ', '_')}.jpg"
                 
                 # Upload to Supabase Storage
-                storage_response = supabase_client.storage.from_('student-photos').upload(
+                supabase_client.storage.from_('student-photos').upload(
                     file_name,
                     first_photo_content,
                     file_options={"content-type": "image/jpeg"}
                 )
-                
-                # Get public URL
-                public_url = supabase_client.storage.from_('student-photos').get_public_url(file_name)
-                
-                if public_url:
-                    photo_url = public_url['publicUrl'] if isinstance(public_url, dict) else str(public_url)
-                    
-                    # Update student with photo_url
-                    supabase_client.table('students').update({
-                        'photo_url': photo_url
-                    }).eq('id', student_id).execute()
-                    
-                    first_photo_url = photo_url
-                    print(f"✅ Stored first photo URL in database: {photo_url}")
+                print(f"✅ Also uploaded photo to Supabase Storage: {file_name}")
         except Exception as e:
-            print(f"⚠️  Warning: Could not upload photo to Supabase: {e}")
-            # Continue anyway - photos for face recognition are already saved
+            print(f"⚠️  Warning: Could not upload photo to Supabase Storage: {e}")
+            # Continue anyway - photos are served via the backend endpoint
         
         # Trigger embeddings rebuild in background
         asyncio.create_task(rebuild_embeddings_background())
@@ -849,6 +845,65 @@ async def upload_student_photos(
     except Exception as e:
         print(f"❌ Error uploading photos: {e}")
         raise HTTPException(status_code=500, detail=f"Error uploading photos: {str(e)}")
+
+
+@app.get("/api/students/{student_id}/photo")
+async def get_student_photo(student_id: str):
+    """
+    Serve a student's profile photo from the local known_faces directory.
+
+    This endpoint is the primary way to display student photos in the dashboard.
+    It reads directly from the known_faces/{student_name}/ folder that is populated
+    during photo upload, so it works regardless of Supabase Storage configuration.
+
+    Args:
+        student_id: UUID of the student
+
+    Returns:
+        The student's first photo as an image file response (JPEG/PNG)
+    """
+    if not supabase_client:
+        raise HTTPException(status_code=503, detail="Database not available")
+
+    try:
+        result = supabase_client.table('students').select('name').eq('id', student_id).execute()
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Student not found")
+        student_name = result.data[0]['name']
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
+    # Sanitize student_name to prevent path traversal
+    safe_name = (
+        student_name
+        .replace('..', '')
+        .replace('/', '_')
+        .replace('\\', '_')
+        .strip()
+        .lstrip('/\\')
+    )
+    student_folder = os.path.join(KNOWN_FACES_DIR, safe_name)
+
+    # Verify the resolved path stays within KNOWN_FACES_DIR
+    base = os.path.realpath(KNOWN_FACES_DIR)
+    target = os.path.realpath(student_folder)
+    if not target.startswith(base + os.sep) and target != base:
+        raise HTTPException(status_code=400, detail="Invalid student name")
+
+    if os.path.exists(student_folder):
+        photos = sorted([
+            f for f in os.listdir(student_folder)
+            if f.lower().endswith(('.jpg', '.jpeg', '.png'))
+        ])
+        if photos:
+            import mimetypes
+            photo_path = os.path.join(student_folder, photos[0])
+            mime_type, _ = mimetypes.guess_type(photo_path)
+            return FileResponse(photo_path, media_type=mime_type or "image/jpeg")
+
+    raise HTTPException(status_code=404, detail="No photo found for student")
 
 
 async def rebuild_embeddings_background():
