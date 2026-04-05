@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Home,
   Camera,
   Users,
   BarChart3,
@@ -16,7 +15,6 @@ export default function Navbar() {
   const pathname = usePathname();
 
   const links = [
-    { href: "/", label: "Dashboard", icon: Home },
     { href: "/camera", label: "Camera", icon: Camera },
     { href: "/trips", label: "Trips", icon: Bus },
     { href: "/students", label: "Students", icon: Users },
