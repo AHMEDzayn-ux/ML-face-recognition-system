@@ -2376,7 +2376,10 @@ async def session_checkin(
     Returns:
         Check-in result with student name and confidence
     """
+    print(f"\n📸 Session checkin request - Session ID: {session_id}, File: {file.filename}")
+    
     if not supabase_client:
+        print("❌ Supabase not configured")
         raise HTTPException(status_code=503, detail="Supabase not configured")
     
     try:
@@ -2387,13 +2390,30 @@ async def session_checkin(
         with open(temp_path, "wb") as buffer:
             buffer.write(content)
         
+        # Preprocess image for better recognition
+        print(f"🖼️  Processing image: {temp_path}")
+        img = cv2.imread(temp_path)
+        if img is None:
+            print("❌ Could not read image file")
+            os.remove(temp_path)
+            raise HTTPException(status_code=400, detail="Could not read image file")
+        
+        # Resize to standard size
+        img = cv2.resize(img, (640, 480))
+        
+        # Apply brightness enhancement if needed
+        img = preprocess_for_recognition(img)
+        cv2.imwrite(temp_path, img)
+        print(f"✅ Image preprocessed successfully")
+        
         # Get student name from face recognition
         try:
+            print(f"🔍 Extracting face embedding...")
             embedding_objs = DeepFace.represent(
                 img_path=temp_path,
                 model_name="Facenet",
-                detector_backend="mtcnn",
-                enforce_detection=True
+                detector_backend="retinaface",  # Better balance: handles angles + reasonable speed
+                enforce_detection=False  # Allow slight angle variations
             )
             
             if not embedding_objs:
@@ -2401,23 +2421,30 @@ async def session_checkin(
             
             # Get the embedding
             test_embedding = np.array(embedding_objs[0]["embedding"])
+            print(f"✅ Face embedding extracted successfully")
             
-        except ValueError:
+        except ValueError as e:
+            print(f"❌ No face detected in image")
             os.remove(temp_path)
             raise HTTPException(status_code=400, detail="No face detected in image")
         except Exception as e:
+            print(f"❌ Face detection error: {str(e)}")
             os.remove(temp_path)
             raise HTTPException(status_code=400, detail=f"Face detection error: {str(e)}")
         
         # Load embeddings database
+        print(f"📚 Loading embeddings database...")
         if not os.path.exists(EMBEDDINGS_DB):
+            print(f"❌ Embeddings database not found at: {EMBEDDINGS_DB}")
             os.remove(temp_path)
             raise HTTPException(status_code=503, detail="Embeddings database not ready")
         
         with open(EMBEDDINGS_DB, 'rb') as f:
             embeddings_db = pickle.load(f)
+        print(f"✅ Loaded {len(embeddings_db)} students from embeddings database")
         
         # Find best match
+        print(f"🔍 Searching for matching student...")
         best_match = None
         best_distance = float('inf')
         threshold = 0.4
@@ -2425,7 +2452,8 @@ async def session_checkin(
         for person_name, person_embeddings in embeddings_db.items():
             for emb_obj in person_embeddings:
                 emb = np.array(emb_obj['embedding'])
-                distance = np.linalg.norm(test_embedding - emb)
+                # Use cosine distance (same as mark_attendance endpoint)
+                distance = calculate_cosine_distance(test_embedding, emb)
                 
                 if distance < best_distance:
                     best_distance = distance
@@ -2434,17 +2462,22 @@ async def session_checkin(
         os.remove(temp_path)
         
         if best_distance > threshold:
+            print(f"❌ No matching student found - best distance: {best_distance:.4f}, threshold: {threshold}")
             raise HTTPException(status_code=400, detail="No matching student found")
         
         student_name, distance = best_match
         confidence = max(0, 1 - (distance / 0.45))  # Convert distance to confidence
+        print(f"✅ Match found: {student_name} (distance: {distance:.4f}, confidence: {confidence:.2%})")
         
         # Find student in session participants
+        print(f"📋 Checking session participants...")
         session_result = supabase_client.table("session_attendance")\
             .select("*")\
             .eq("session_id", session_id)\
             .order("name")\
             .execute()
+        
+        print(f"📋 Found {len(session_result.data or [])} participants in session")
         
         # Try exact match first, then fuzzy match
         matched_participant = None
@@ -2453,6 +2486,7 @@ async def session_checkin(
         for p in session_result.data or []:
             if p["name"].lower() == student_name.lower():
                 matched_participant = p
+                print(f"✅ Exact match found: {p['name']}")
                 break
         
         # Fuzzy match if needed
@@ -2460,14 +2494,20 @@ async def session_checkin(
             # Find closest name match
             from difflib import SequenceMatcher
             best_ratio = 0
+            best_participant = None
             for p in session_result.data:
                 ratio = SequenceMatcher(None, p["name"].lower(), student_name.lower()).ratio()
                 if ratio > best_ratio:
                     best_ratio = ratio
                     if ratio > 0.7:  # 70% match threshold
                         matched_participant = p
+                        best_participant = p
+            if best_participant:
+                print(f"✅ Fuzzy match found: {best_participant['name']} (ratio: {best_ratio:.2%})")
         
         if not matched_participant:
+            participant_names = [p["name"] for p in (session_result.data or [])]
+            print(f"❌ Student '{student_name}' not found in session participants: {participant_names}")
             raise HTTPException(
                 status_code=400,
                 detail=f"Student '{student_name}' is not in this session's participant list"
